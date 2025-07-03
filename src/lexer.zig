@@ -62,8 +62,8 @@ test "test next token" {
     try tests.append(.{ .type = token.TokenType.plus, .literal = '+' });
     try tests.append(.{ .type = token.TokenType.l_paren, .literal = '(' });
     try tests.append(.{ .type = token.TokenType.r_paren, .literal = ')' });
-    try tests.append(.{ .type = token.TokenType.l_brace, .literal = '[' });
-    try tests.append(.{ .type = token.TokenType.r_brace, .literal = ']' });
+    try tests.append(.{ .type = token.TokenType.l_brace, .literal = '{' });
+    try tests.append(.{ .type = token.TokenType.r_brace, .literal = '}' });
     try tests.append(.{ .type = token.TokenType.comma, .literal = ',' });
     try tests.append(.{ .type = token.TokenType.semicolon, .literal = ';' });
     try tests.append(.{ .type = token.TokenType.eof, .literal = '0' });
@@ -73,8 +73,7 @@ test "test next token" {
     for (tests.items) |t| {
         const tok = l.next_token();
 
-        try std.testing.expectEqual(token.TokenType, t.type, tok.type);
-        try std.testing.expectEqual([]const u8, t.literal, tok.literal);
-        try std.testing.expectEqual([]const u8, t.literal, "asd");
+        try std.testing.expectEqual(t.type, tok.type);
+        try std.testing.expectEqual(t.literal, tok.literal);
     }
 }
