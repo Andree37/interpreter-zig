@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const TokenType = enum {
     illegal,
     eof,
@@ -34,8 +36,8 @@ pub const TokenType = enum {
             .r_paren => ")",
             .l_brace => "[",
             .r_brace => "]",
-            .function => "FUNCTION",
-            .let => "LET",
+            .function => "fn",
+            .let => "let",
 
             else => "ILLEGAL",
         };
@@ -43,3 +45,9 @@ pub const TokenType = enum {
 };
 
 pub const Token = struct { type: TokenType, literal: []const u8 };
+
+pub fn lookup_ident(ident: []const u8) TokenType {
+    if (std.mem.eql(u8, ident, "fn")) return TokenType.function;
+    if (std.mem.eql(u8, ident, "let")) return TokenType.let;
+    return TokenType.ident;
+}

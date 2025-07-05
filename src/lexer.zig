@@ -29,11 +29,29 @@ const Lexer = struct {
         self.read_position += 1;
     }
 
+    fn read_number(self: *Lexer) []const u8 {
+        const position = self.position;
+        while (is_number(self.ch)) {
+            self.read_char();
+        }
+        return self.input[position..self.position];
+    }
+
+    fn read_identifier(self: *Lexer) []const u8 {
+        const position = self.position;
+        while (is_letter(self.ch)) {
+            self.read_char();
+        }
+        return self.input[position..self.position];
+    }
+
     fn next_token(self: *Lexer) token.Token {
         var tok: token.Token = .{
             .type = token.TokenType.illegal,
             .literal = "",
         };
+
+        self.skip_whitespaces();
 
         const lit: []const u8 = if (self.position < self.input.len) self.input[self.position .. self.position + 1] else "";
 
@@ -46,13 +64,38 @@ const Lexer = struct {
             '}' => tok = .{ .type = token.TokenType.r_brace, .literal = lit },
             ',' => tok = .{ .type = token.TokenType.comma, .literal = lit },
             '+' => tok = .{ .type = token.TokenType.plus, .literal = lit },
-            else => tok = .{ .type = token.TokenType.eof, .literal = "" },
+            0 => tok = .{ .type = token.TokenType.eof, .literal = "" },
+            'a'...'z', 'A'...'Z', '_' => {
+                tok.literal = self.read_identifier();
+                tok.type = token.lookup_ident(tok.literal);
+                return tok;
+            },
+            '0'...'9' => {
+                tok.type = token.TokenType.int;
+                tok.literal = self.read_number();
+                return tok;
+            },
+            else => tok = .{ .type = token.TokenType.illegal, .literal = lit },
         }
 
         self.read_char();
         return tok;
     }
+
+    fn skip_whitespaces(self: *Lexer) void {
+        while (self.ch == ' ' or self.ch == '\t' or self.ch == '\n' or self.ch == '\r') {
+            self.read_char();
+        }
+    }
 };
+
+fn is_letter(ch: u8) bool {
+    return 'a' <= ch and ch <= 'z' or 'A' <= ch and ch <= 'Z' or ch == '_';
+}
+
+fn is_number(ch: u8) bool {
+    return '0' <= ch and ch <= '9';
+}
 
 test "test next token" {
     const input = "=+(){},;";
@@ -92,7 +135,8 @@ test "proper monkey code" {
         \\let result = add(five,ten);
     ;
 
-    const tests = std.ArrayList(token.Token).init(std.testing.Allocator);
+    var tests = std.ArrayList(token.Token).init(std.testing.allocator);
+    defer tests.deinit();
 
     try tests.append(.{ .type = token.TokenType.let, .literal = "let" });
     try tests.append(.{ .type = token.TokenType.ident, .literal = "five" });
@@ -103,6 +147,7 @@ test "proper monkey code" {
     try tests.append(.{ .type = token.TokenType.ident, .literal = "ten" });
     try tests.append(.{ .type = token.TokenType.assign, .literal = "=" });
     try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
     try tests.append(.{ .type = token.TokenType.let, .literal = "let" });
     try tests.append(.{ .type = token.TokenType.ident, .literal = "add" });
     try tests.append(.{ .type = token.TokenType.assign, .literal = "=" });
@@ -111,7 +156,6 @@ test "proper monkey code" {
     try tests.append(.{ .type = token.TokenType.ident, .literal = "x" });
     try tests.append(.{ .type = token.TokenType.comma, .literal = "," });
     try tests.append(.{ .type = token.TokenType.ident, .literal = "y" });
-    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
     try tests.append(.{ .type = token.TokenType.r_paren, .literal = ")" });
     try tests.append(.{ .type = token.TokenType.l_brace, .literal = "{" });
     try tests.append(.{ .type = token.TokenType.ident, .literal = "x" });
