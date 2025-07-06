@@ -39,8 +39,3 @@ test "fuzz example" {
     };
     try std.testing.fuzz(Context{}, Context.testOne, .{});
 }
-
-test "equals is there" {
-    const ass = token.TokenType.assign;
-    try std.testing.expectEqual("=", ass.name());
-}

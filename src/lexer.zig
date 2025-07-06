@@ -45,6 +45,14 @@ const Lexer = struct {
         return self.input[position..self.position];
     }
 
+    fn peek_char(self: *Lexer) u8 {
+        if (self.read_position >= self.input.len) {
+            return 0;
+        } else {
+            return self.input[self.read_position];
+        }
+    }
+
     fn next_token(self: *Lexer) token.Token {
         var tok: token.Token = .{
             .type = token.TokenType.illegal,
@@ -56,7 +64,14 @@ const Lexer = struct {
         const lit: []const u8 = if (self.position < self.input.len) self.input[self.position .. self.position + 1] else "";
 
         switch (self.ch) {
-            '=' => tok = .{ .type = token.TokenType.assign, .literal = lit },
+            '=' => {
+                if (self.peek_char() == '=') {
+                    self.read_char();
+                    tok = .{ .type = token.TokenType.eq, .literal = "==" };
+                } else {
+                    tok = .{ .type = token.TokenType.assign, .literal = lit };
+                }
+            },
             ';' => tok = .{ .type = token.TokenType.semicolon, .literal = lit },
             '(' => tok = .{ .type = token.TokenType.l_paren, .literal = lit },
             ')' => tok = .{ .type = token.TokenType.r_paren, .literal = lit },
@@ -64,6 +79,19 @@ const Lexer = struct {
             '}' => tok = .{ .type = token.TokenType.r_brace, .literal = lit },
             ',' => tok = .{ .type = token.TokenType.comma, .literal = lit },
             '+' => tok = .{ .type = token.TokenType.plus, .literal = lit },
+            '-' => tok = .{ .type = token.TokenType.minus, .literal = lit },
+            '!' => {
+                if (self.peek_char() == '=') {
+                    self.read_char();
+                    tok = .{ .type = token.TokenType.not_eq, .literal = "!=" };
+                } else {
+                    tok = .{ .type = token.TokenType.bang, .literal = lit };
+                }
+            },
+            '/' => tok = .{ .type = token.TokenType.slash, .literal = lit },
+            '*' => tok = .{ .type = token.TokenType.asterisk, .literal = lit },
+            '<' => tok = .{ .type = token.TokenType.lt, .literal = lit },
+            '>' => tok = .{ .type = token.TokenType.gt, .literal = lit },
             0 => tok = .{ .type = token.TokenType.eof, .literal = "" },
             'a'...'z', 'A'...'Z', '_' => {
                 tok.literal = self.read_identifier();
@@ -123,7 +151,7 @@ test "test next token" {
     }
 }
 
-test "proper monkey code" {
+test "some monkey code" {
     const input =
         \\let five = 5;
         \\let ten = 10;
@@ -133,6 +161,17 @@ test "proper monkey code" {
         \\};
         \\
         \\let result = add(five,ten);
+        \\!-/*5;
+        \\5 < 10 > 5;
+        \\
+        \\if (5 < 10) {
+        \\  return true;
+        \\} else {
+        \\  return false;
+        \\}
+        \\
+        \\10 == 10;
+        \\10 != 9;
     ;
 
     var tests = std.ArrayList(token.Token).init(std.testing.allocator);
@@ -174,12 +213,52 @@ test "proper monkey code" {
     try tests.append(.{ .type = token.TokenType.ident, .literal = "ten" });
     try tests.append(.{ .type = token.TokenType.r_paren, .literal = ")" });
     try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.bang, .literal = "!" });
+    try tests.append(.{ .type = token.TokenType.minus, .literal = "-" });
+    try tests.append(.{ .type = token.TokenType.slash, .literal = "/" });
+    try tests.append(.{ .type = token.TokenType.asterisk, .literal = "*" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "5" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "5" });
+    try tests.append(.{ .type = token.TokenType.lt, .literal = "<" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.gt, .literal = ">" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "5" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.kif, .literal = "if" });
+    try tests.append(.{ .type = token.TokenType.l_paren, .literal = "(" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "5" });
+    try tests.append(.{ .type = token.TokenType.lt, .literal = "<" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.r_paren, .literal = ")" });
+    try tests.append(.{ .type = token.TokenType.l_brace, .literal = "{" });
+    try tests.append(.{ .type = token.TokenType.kreturn, .literal = "return" });
+    try tests.append(.{ .type = token.TokenType.true, .literal = "true" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.r_brace, .literal = "}" });
+    try tests.append(.{ .type = token.TokenType.kelse, .literal = "else" });
+    try tests.append(.{ .type = token.TokenType.l_brace, .literal = "{" });
+    try tests.append(.{ .type = token.TokenType.kreturn, .literal = "return" });
+    try tests.append(.{ .type = token.TokenType.false, .literal = "false" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.r_brace, .literal = "}" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.eq, .literal = "==" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "10" });
+    try tests.append(.{ .type = token.TokenType.not_eq, .literal = "!=" });
+    try tests.append(.{ .type = token.TokenType.int, .literal = "9" });
+    try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
     try tests.append(.{ .type = token.TokenType.eof, .literal = "" });
 
     var l = Lexer.new(input);
 
     for (tests.items) |t| {
         const tok = l.next_token();
+
+        // std.debug.print("Expected: {s}, got: {s}\n", .{ t.literal, tok.literal });
+        // std.debug.print("Expected: {any}, got: {any}\n", .{ t.type, tok.type });
 
         try std.testing.expectEqual(t.type, tok.type);
         try std.testing.expect(std.mem.eql(u8, t.literal, tok.literal));
