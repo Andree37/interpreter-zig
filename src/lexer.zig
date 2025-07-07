@@ -1,13 +1,13 @@
 const std = @import("std");
 const token = @import("token.zig");
 
-const Lexer = struct {
+pub const Lexer = struct {
     input: []const u8,
     position: u32,
     read_position: u32,
     ch: u8,
 
-    fn new(input: []const u8) Lexer {
+    pub fn new(input: []const u8) Lexer {
         var l: Lexer = .{
             .input = input,
             .position = 0,
@@ -53,7 +53,7 @@ const Lexer = struct {
         }
     }
 
-    fn next_token(self: *Lexer) token.Token {
+    pub fn next_token(self: *Lexer) token.Token {
         var tok: token.Token = .{
             .type = token.TokenType.illegal,
             .literal = "",
