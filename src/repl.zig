@@ -40,7 +40,6 @@ pub fn start(
 
         var lex = lexer.Lexer.new(line);
 
-        // Print the tokens
         while (true) {
             const tok = lex.next_token();
             if (tok.type == token.TokenType.eof) break;
