@@ -3,23 +3,27 @@ const token = @import("token.zig");
 
 // Node interface
 const Node = struct {
-    token_literal: fn () []const u8,
+    token_literal: *fn () []const u8,
 };
 
 // Statemenet interface
 const Statement = struct {
     node: Node,
-    statement_node: fn () void,
+    statement_node: *fn () void,
 };
 
 // Expression interface
 const Expression = struct {
     node: Node,
-    expression_node: fn () void,
+    expression_node: *fn () void,
 };
 
-const Program = struct {
+pub const Program = struct {
     statements: std.ArrayList(Statement),
+
+    pub fn init(allocator: std.mem.Allocator) Program {
+        return Program{ .statements = std.ArrayList(Statement).init(allocator) };
+    }
 
     fn token_literal(self: *Program) []const u8 {
         if (self.statements.items.len > 0) {

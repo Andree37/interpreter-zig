@@ -7,7 +7,7 @@ pub const Lexer = struct {
     read_position: u32,
     ch: u8,
 
-    pub fn new(input: []const u8) Lexer {
+    pub fn init(input: []const u8) Lexer {
         var l: Lexer = .{
             .input = input,
             .position = 0,
@@ -141,7 +141,7 @@ test "test next token" {
     try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
     try tests.append(.{ .type = token.TokenType.eof, .literal = "" });
 
-    var l = Lexer.new(input);
+    var l = Lexer.init(input);
 
     for (tests.items) |t| {
         const tok = l.next_token();
@@ -252,7 +252,7 @@ test "some monkey code" {
     try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
     try tests.append(.{ .type = token.TokenType.eof, .literal = "" });
 
-    var l = Lexer.new(input);
+    var l = Lexer.init(input);
 
     for (tests.items) |t| {
         const tok = l.next_token();

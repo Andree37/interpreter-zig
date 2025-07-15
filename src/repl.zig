@@ -38,7 +38,7 @@ pub fn start(
         const line = line_buf.items;
         if (line.len == 0) continue;
 
-        var lex = lexer.Lexer.new(line);
+        var lex = lexer.Lexer.init(line);
 
         while (true) {
             const tok = lex.next_token();
