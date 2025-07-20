@@ -1,21 +1,25 @@
 const std = @import("std");
 const token = @import("token.zig");
 
-// Node interface
-const Node = struct {
-    token_literal: *fn () []const u8,
+pub const Statement = union(enum) {
+    let: LetStatement,
+    // add return, expression, etc. later
+
+    pub fn token_literal(self: *const Statement) []const u8 {
+        return switch (self.*) {
+            .let => |stmt| stmt.token_literal(),
+        };
+    }
 };
 
-// Statemenet interface
-const Statement = struct {
-    node: Node,
-    statement_node: *fn () void,
-};
+pub const Expression = union(enum) {
+    identifier: Identifier,
 
-// Expression interface
-const Expression = struct {
-    node: Node,
-    expression_node: *fn () void,
+    pub fn token_literal(self: *const Expression) []const u8 {
+        return switch (self.*) {
+            .identifier => |ident| ident.token_literal(),
+        };
+    }
 };
 
 pub const Program = struct {
@@ -23,6 +27,10 @@ pub const Program = struct {
 
     pub fn init(allocator: std.mem.Allocator) Program {
         return Program{ .statements = std.ArrayList(Statement).init(allocator) };
+    }
+
+    pub fn deinit(self: *Program) void {
+        self.statements.deinit();
     }
 
     fn token_literal(self: *Program) []const u8 {
@@ -34,25 +42,27 @@ pub const Program = struct {
     }
 };
 
-const Identifier = struct {
+pub const Identifier = struct {
     token: token.Token, // the token.IDENT token
     value: []const u8,
 
-    // fn expression_node(self: *Identifier) void {}
-
-    fn token_literal(self: *Identifier) []const u8 {
+    pub fn token_literal(self: *const Identifier) []const u8 {
         return self.token.literal;
     }
 };
 
-const LetStatement = struct {
+pub const LetStatement = struct {
     token: token.Token,
-    name: *Identifier,
+    name: Identifier,
     value: Expression,
 
     // fn statement_node(self: *LetStatement) void!anyerror {}
 
-    fn token_literal(self: *LetStatement) []const u8 {
+    pub fn init(stmt: Statement) LetStatement {
+        return stmt.let;
+    }
+
+    fn token_literal(self: *const LetStatement) []const u8 {
         return self.token.literal;
     }
 };
