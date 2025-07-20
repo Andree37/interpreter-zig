@@ -87,15 +87,47 @@ pub const Parser = struct {
         return stmt;
     }
 
+    fn parse_return_statement(self: *Parser) ast.ReturnStatement {
+        const return_token = self.cur_token;
+        const stmt: ast.ReturnStatement = .{
+            .token = return_token,
+            .return_value = .{
+                .identifier = .{
+                    .token = .{
+                        .literal = "",
+                        .type = token.TokenType.ident,
+                    },
+                    .value = "",
+                },
+            },
+        };
+
+        self.next_token();
+
+        //TODO: we're skipping the expressions until we encounter a semicolon
+        while (!(self.cur_token.type == token.TokenType.semicolon)) {
+            self.next_token();
+        }
+
+        return stmt;
+    }
+
     fn parse_statement(self: *Parser) ?ast.Statement {
         switch (self.cur_token.type) {
             .let => {
                 const parsed = self.parse_let_statement();
                 std.debug.print("Parsed let statement: {any}\n", .{parsed});
                 if (parsed != null) {
-                    return .{ .let = parsed.? };
+                    return .{ .let_stmt = parsed.? };
                 }
                 return null;
+            },
+            .kreturn => {
+                const parsed = self.parse_return_statement();
+                std.debug.print("Parsed return statement: {any}\n", .{parsed});
+                return .{
+                    .return_stmt = parsed,
+                };
             },
             else => return null,
         }
@@ -169,10 +201,34 @@ test "test let bad input" {
     defer program.deinit();
 
     // check parser errors
-    for (p.errors.items) |_| {
+    for (p.errors.items) |err| {
         // should find one :D
-        // std.debug.print("found bad err: {any}", .{err});
+        std.debug.print("found bad err: {any}", .{err});
     }
 
     try std.testing.expect(p.errors.items.len == 1);
+}
+
+test "test return statements" {
+    const input =
+        \\\return 5;
+        \\\return 10;
+        \\\return 838383;
+    ;
+
+    var lex = lexer.Lexer.init(input);
+    var p = Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    try std.testing.expect(p.errors.items.len == 0);
+
+    try std.testing.expect(program.statements.items.len == 3);
+
+    for (program.statements.items) |stmt| {
+        var return_stmt = ast.ReturnStatement.init(stmt);
+        try std.testing.expectEqualStrings("return", return_stmt.token_literal());
+    }
 }

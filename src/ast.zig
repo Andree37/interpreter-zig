@@ -2,12 +2,14 @@ const std = @import("std");
 const token = @import("token.zig");
 
 pub const Statement = union(enum) {
-    let: LetStatement,
+    let_stmt: LetStatement,
+    return_stmt: ReturnStatement,
     // add return, expression, etc. later
 
     pub fn token_literal(self: *const Statement) []const u8 {
         return switch (self.*) {
-            .let => |stmt| stmt.token_literal(),
+            .let_stmt => |stmt| stmt.token_literal(),
+            .return_stmt => |stmt| stmt.token_literal(),
         };
     }
 };
@@ -59,10 +61,25 @@ pub const LetStatement = struct {
     // fn statement_node(self: *LetStatement) void!anyerror {}
 
     pub fn init(stmt: Statement) LetStatement {
-        return stmt.let;
+        return stmt.let_stmt;
     }
 
     fn token_literal(self: *const LetStatement) []const u8 {
+        return self.token.literal;
+    }
+};
+
+pub const ReturnStatement = struct {
+    token: token.Token,
+    return_value: Expression,
+
+    // fn statement_node(self: *ReturnStatement) void!anyerror {}
+
+    pub fn init(stmt: Statement) ReturnStatement {
+        return stmt.return_stmt;
+    }
+
+    pub fn token_literal(self: *const ReturnStatement) []const u8 {
         return self.token.literal;
     }
 };
