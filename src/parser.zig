@@ -5,12 +5,20 @@ const token = @import("token.zig");
 const ast = @import("ast.zig");
 
 pub const Parser = struct {
+    allocator: std.mem.Allocator,
     lexer: *lexer.Lexer,
     cur_token: token.Token,
     peek_token: token.Token,
+    errors: std.ArrayList([]const u8),
 
-    pub fn init(lex: *lexer.Lexer) Parser {
-        var p = Parser{ .lexer = lex, .cur_token = .{ .type = token.TokenType.eof, .literal = "" }, .peek_token = .{ .type = token.TokenType.eof, .literal = "" } };
+    pub fn init(allocator: std.mem.Allocator, lex: *lexer.Lexer) Parser {
+        var p = Parser{
+            .allocator = allocator,
+            .lexer = lex,
+            .cur_token = .{ .type = token.TokenType.eof, .literal = "" },
+            .peek_token = .{ .type = token.TokenType.eof, .literal = "" },
+            .errors = std.ArrayList([]const u8).init(allocator),
+        };
 
         // read two tokens, so cur_token and peek_token are both set
         p.next_token();
@@ -19,12 +27,28 @@ pub const Parser = struct {
         return p;
     }
 
+    pub fn deinit(self: *Parser) void {
+        self.errors.deinit();
+    }
+
     fn expect_peek(self: *Parser, t: token.TokenType) bool {
         if (self.peek_token.type == t) {
             self.next_token();
             return true;
         }
+        self.peek_error(t);
         return false;
+    }
+
+    fn peek_error(self: *Parser, t: token.TokenType) void {
+        var buf: [128]u8 = undefined; //meh?
+        const msg = std.fmt.bufPrint(
+            &buf,
+            "expected next token to be: {s}, but got: {s} instead",
+            .{ @tagName(t), @tagName(self.peek_token.type) },
+        ) catch return;
+
+        _ = self.errors.append(msg) catch {};
     }
 
     fn next_token(self: *Parser) void {
@@ -95,16 +119,24 @@ pub const Parser = struct {
 
 test "test let statement" {
     const input =
-        \\\let x =5;
+        \\\let x = 5;
         \\\let y = 10;
         \\\let foobar = 838383;
     ;
 
     var lex = lexer.Lexer.init(input);
-    var p = Parser.init(&lex);
+    var p = Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
 
     var program = try p.parse_program(std.testing.allocator);
     defer program.deinit();
+
+    // check parser errors
+    for (p.errors.items) |err| {
+        std.debug.print("found bad err: {any}", .{err});
+    }
+
+    try std.testing.expect(p.errors.items.len == 0);
 
     std.debug.print("Expected statements 3; found: {any}\n", .{program.statements.items.len});
     try std.testing.expect(program.statements.items.len == 3);
@@ -120,4 +152,27 @@ test "test let statement" {
 
         try std.testing.expectEqualStrings(ei, letStmt.name.token_literal());
     }
+}
+
+test "test let bad input" {
+    const input =
+        \\\let x 5;
+        \\\let y = 10;
+        \\\let foobar = 838383;
+    ;
+
+    var lex = lexer.Lexer.init(input);
+    var p = Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    // check parser errors
+    for (p.errors.items) |_| {
+        // should find one :D
+        // std.debug.print("found bad err: {any}", .{err});
+    }
+
+    try std.testing.expect(p.errors.items.len == 1);
 }
