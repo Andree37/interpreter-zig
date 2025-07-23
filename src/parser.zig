@@ -68,6 +68,7 @@ pub const Parser = struct {
         }
 
         const stmt: ast.LetStatement = .{
+            .allocator = self.allocator,
             .token = let_token,
             .name = .{
                 .token = ident_token,
@@ -90,6 +91,7 @@ pub const Parser = struct {
     fn parse_return_statement(self: *Parser) ast.ReturnStatement {
         const return_token = self.cur_token;
         const stmt: ast.ReturnStatement = .{
+            .allocator = self.allocator,
             .token = return_token,
             .return_value = .{
                 .identifier = .{
