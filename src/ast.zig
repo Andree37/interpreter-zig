@@ -4,12 +4,14 @@ const token = @import("token.zig");
 pub const Statement = union(enum) {
     let_stmt: LetStatement,
     return_stmt: ReturnStatement,
+    expr_stmt: ExpressionStatement,
     // add return, expression, etc. later
 
     pub fn token_literal(self: *const Statement) []const u8 {
         return switch (self.*) {
             .let_stmt => |stmt| stmt.token_literal(),
             .return_stmt => |stmt| stmt.token_literal(),
+            .expr_stmt => |stmt| stmt.token_literal(),
         };
     }
 
@@ -17,6 +19,7 @@ pub const Statement = union(enum) {
         return switch (self.*) {
             .let_stmt => |stmt| try stmt.string(),
             .return_stmt => |stmt| try stmt.string(),
+            .expr_stmt => |stmt| stmt.string(),
         };
     }
 };
@@ -135,11 +138,15 @@ pub const ExpressionStatement = struct {
 
     // fn statement_node(self: *ExpressionStatement) void!anyerror {}
 
-    fn token_literal(self: *const ExpressionStatement) []const u8 {
-        self.token.literal;
+    pub fn init(stmt: Statement) ExpressionStatement {
+        return stmt.expr_stmt;
     }
 
-    fn string(self: *const ExpressionStatement) []const u8 {
+    pub fn token_literal(self: *const ExpressionStatement) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const ExpressionStatement) []const u8 {
         // TODO: return self.expression.string();
         return self.token_literal();
     }

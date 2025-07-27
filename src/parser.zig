@@ -4,12 +4,20 @@ const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 const ast = @import("ast.zig");
 
+const prefixParseFn = *const fn (*Parser) ast.Expression;
+const infixParseFn = *const fn (*Parser, ast.Expression) ast.Expression;
+
 pub const Parser = struct {
     allocator: std.mem.Allocator,
+
     lexer: *lexer.Lexer,
+    errors: std.ArrayList([]const u8),
+
     cur_token: token.Token,
     peek_token: token.Token,
-    errors: std.ArrayList([]const u8),
+
+    prefix_parse_fns: std.AutoHashMap(token.TokenType, prefixParseFn),
+    infix_parse_fns: std.AutoHashMap(token.TokenType, infixParseFn),
 
     pub fn init(allocator: std.mem.Allocator, lex: *lexer.Lexer) Parser {
         var p = Parser{
@@ -18,6 +26,8 @@ pub const Parser = struct {
             .cur_token = .{ .type = token.TokenType.eof, .literal = "" },
             .peek_token = .{ .type = token.TokenType.eof, .literal = "" },
             .errors = std.ArrayList([]const u8).init(allocator),
+            .prefix_parse_fns = std.AutoHashMap(token.TokenType, prefixParseFn).init(allocator),
+            .infix_parse_fns = std.AutoHashMap(token.TokenType, infixParseFn).init(allocator),
         };
 
         // read two tokens, so cur_token and peek_token are both set
@@ -29,6 +39,8 @@ pub const Parser = struct {
 
     pub fn deinit(self: *Parser) void {
         self.errors.deinit();
+        self.prefix_parse_fns.deinit();
+        self.infix_parse_fns.deinit();
     }
 
     fn expect_peek(self: *Parser, t: token.TokenType) bool {
@@ -149,6 +161,14 @@ pub const Parser = struct {
 
         return program;
     }
+
+    pub fn register_prefix(self: *Parser, token_type: token.TokenType, prefix_parser_fn: prefixParseFn) void {
+        self.prefix_parse_fns.put(token_type, prefix_parser_fn);
+    }
+
+    pub fn register_infix(self: *Parser, token_type: token.TokenType, infix_parser_fn: infixParseFn) void {
+        self.infix_parse_fns.put(token_type, infix_parser_fn);
+    }
 };
 
 test "test let statement" {
@@ -233,4 +253,26 @@ test "test return statements" {
         var return_stmt = ast.ReturnStatement.init(stmt);
         try std.testing.expectEqualStrings("return", return_stmt.token_literal());
     }
+}
+
+test "test identifier expression" {
+    const input = "foobar;";
+
+    var lex = lexer.Lexer.init(input);
+    var p = Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const expr_stmt = ast.ExpressionStatement.init(stmt);
+
+    const ident = expr_stmt.expression.identifier;
+
+    try std.testing.expectEqualStrings("foobar", ident.value);
+    try std.testing.expectEqualStrings("foobar", ident.token_literal());
 }
