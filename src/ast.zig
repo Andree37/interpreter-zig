@@ -15,10 +15,10 @@ pub const Statement = union(enum) {
         };
     }
 
-    pub fn string(self: *const Statement) ![]const u8 {
+    pub fn string(self: *const Statement, writer: anytype) !void {
         return switch (self.*) {
-            .let_stmt => |stmt| try stmt.string(),
-            .return_stmt => |stmt| try stmt.string(),
+            .let_stmt => |stmt| try stmt.string(writer),
+            .return_stmt => |stmt| try stmt.string(writer),
             .expr_stmt => |stmt| stmt.string(),
         };
     }
@@ -57,10 +57,9 @@ pub const Program = struct {
         var list = std.ArrayList(u8).init(self.allocator);
         defer list.deinit();
 
+        const stream = list.writer();
         for (self.statements.items) |item| {
-            const part = try item.string();
-            defer self.allocator.free(part);
-            try list.appendSlice(part);
+            try item.string(stream);
         }
 
         return list.toOwnedSlice();
@@ -89,7 +88,6 @@ pub const Identifier = struct {
 };
 
 pub const LetStatement = struct {
-    allocator: std.mem.Allocator,
     token: token.Token,
     name: Identifier,
     value: Expression,
@@ -100,10 +98,13 @@ pub const LetStatement = struct {
         return stmt.let_stmt;
     }
 
-    pub fn string(self: *const LetStatement) ![]const u8 {
+    pub fn string(self: *const LetStatement, writer: anytype) !void {
         // TODO: need to add expressions
-        // TODO: need to change all allocPrint to using writer...
-        return try std.fmt.allocPrint(self.allocator, "{s} {s} = {s};", .{ self.token_literal(), self.name.string(), self.value.string() });
+        try writer.print("{s} {s} = {s};", .{
+            self.token_literal(),
+            self.name.string(),
+            self.value.string(),
+        });
     }
 
     fn token_literal(self: *const LetStatement) []const u8 {
@@ -112,7 +113,6 @@ pub const LetStatement = struct {
 };
 
 pub const ReturnStatement = struct {
-    allocator: std.mem.Allocator,
     token: token.Token,
     return_value: Expression,
 
@@ -122,9 +122,11 @@ pub const ReturnStatement = struct {
         return stmt.return_stmt;
     }
 
-    pub fn string(self: *const ReturnStatement) ![]const u8 {
+    pub fn string(self: *const ReturnStatement, writer: anytype) !void {
         // TODO: add expression
-        return try std.fmt.allocPrint(self.allocator, "{s} ;", .{self.token_literal()});
+        try writer.print("{s} ;", .{
+            self.token_literal(),
+        });
     }
 
     pub fn token_literal(self: *const ReturnStatement) []const u8 {
@@ -146,9 +148,9 @@ pub const ExpressionStatement = struct {
         return self.token.literal;
     }
 
-    pub fn string(self: *const ExpressionStatement) []const u8 {
+    pub fn string(_: *const ExpressionStatement) void {
         // TODO: return self.expression.string();
-        return self.token_literal();
+        return;
     }
 };
 
@@ -161,7 +163,6 @@ test "test string" {
     // let my_var = another_var;
 
     const let_statement: LetStatement = .{
-        .allocator = alloc,
         .token = .{
             .type = token.TokenType.let,
             .literal = "let",
