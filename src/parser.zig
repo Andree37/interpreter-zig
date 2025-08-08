@@ -41,6 +41,7 @@ pub const Parser = struct {
         };
 
         try p.register_prefix(token.TokenType.ident, parse_identifier);
+        try p.register_prefix(token.TokenType.int, parse_integer_literal);
 
         // read two tokens, so cur_token and peek_token are both set
         p.next_token();
@@ -152,6 +153,21 @@ pub const Parser = struct {
         }
 
         return stmt;
+    }
+
+    fn parse_integer_literal(self: *Parser) ast.Expression {
+        const int_token = self.cur_token;
+
+        const value = std.fmt.parseInt(i64, int_token.literal, 10) catch 0;
+
+        const expr: ast.Expression = .{
+            .integer_literal = .{
+                .token = int_token,
+                .value = value,
+            },
+        };
+
+        return expr;
     }
 
     fn parse_expression(self: *Parser, _: ExprOrder) ?ast.Expression {
@@ -332,4 +348,26 @@ test "test identifier expression" {
 
     try std.testing.expectEqualStrings("foobar", ident.value);
     try std.testing.expectEqualStrings("foobar", ident.token_literal());
+}
+
+test "test integer literal expression" {
+    const input = "5;";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const int_literal = ast.IntegerLiteral.init(stmt);
+
+    try std.testing.expect(int_literal.value == 5);
+
+    try std.testing.expectEqualStrings("5", int_literal.token_literal());
 }

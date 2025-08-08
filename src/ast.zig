@@ -19,22 +19,31 @@ pub const Statement = union(enum) {
         return switch (self.*) {
             .let_stmt => |stmt| try stmt.string(writer),
             .return_stmt => |stmt| try stmt.string(writer),
-            .expr_stmt => |stmt| stmt.string(),
+            .expr_stmt => |stmt| {
+                try writer.print("{s}", .{
+                    stmt.string(),
+                });
+            },
         };
     }
 };
 
 pub const Expression = union(enum) {
     identifier: Identifier,
+    integer_literal: IntegerLiteral,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
             .identifier => |ident| ident.token_literal(),
+            .integer_literal => |int_lit| int_lit.token_literal(),
         };
     }
 
     pub fn string(self: *const Expression) []const u8 {
-        return self.identifier.string();
+        return switch (self.*) {
+            .identifier => |ident| ident.string(),
+            .integer_literal => |int_lit| int_lit.string(),
+        };
     }
 };
 
@@ -148,9 +157,25 @@ pub const ExpressionStatement = struct {
         return self.token.literal;
     }
 
-    pub fn string(_: *const ExpressionStatement) void {
-        // TODO: return self.expression.string();
-        return;
+    pub fn string(self: *const ExpressionStatement) []const u8 {
+        return self.expression.string();
+    }
+};
+
+pub const IntegerLiteral = struct {
+    token: token.Token,
+    value: i64,
+
+    pub fn init(stmt: Statement) IntegerLiteral {
+        return stmt.expr_stmt.expression.integer_literal;
+    }
+
+    pub fn token_literal(self: *const IntegerLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const IntegerLiteral) []const u8 {
+        return self.token_literal();
     }
 };
 
