@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const token = @import("token.zig");
 
 pub const Statement = union(enum) {
@@ -26,16 +27,26 @@ pub const Statement = union(enum) {
             },
         };
     }
+
+    pub fn deinit(self: *const Statement, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .let_stmt => |stmt| stmt.value.deinit(allocator),
+            .return_stmt => |stmt| stmt.return_value.deinit(allocator),
+            .expr_stmt => |stmt| stmt.expression.deinit(allocator),
+        }
+    }
 };
 
 pub const Expression = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
+    prefix_expr: PrefixExpression,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
             .identifier => |ident| ident.token_literal(),
             .integer_literal => |int_lit| int_lit.token_literal(),
+            .prefix_expr => |expr| expr.token_literal(),
         };
     }
 
@@ -43,7 +54,19 @@ pub const Expression = union(enum) {
         return switch (self.*) {
             .identifier => |ident| ident.string(),
             .integer_literal => |int_lit| int_lit.string(),
+            .prefix_expr => |expr| expr.string(),
         };
+    }
+
+    pub fn deinit(self: *const Expression, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .identifier => {},
+            .integer_literal => {},
+            .prefix_expr => |prefix| {
+                prefix.right.deinit(allocator); // recursively free right expression
+                allocator.destroy(prefix.right);
+            },
+        }
     }
 };
 
@@ -59,6 +82,9 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *Program) void {
+        for (self.statements.items) |stmt| {
+            stmt.deinit(self.allocator);
+        }
         self.statements.deinit();
     }
 
@@ -166,8 +192,8 @@ pub const IntegerLiteral = struct {
     token: token.Token,
     value: i64,
 
-    pub fn init(stmt: Statement) IntegerLiteral {
-        return stmt.expr_stmt.expression.integer_literal;
+    pub fn init(expr: *const Expression) IntegerLiteral {
+        return expr.integer_literal;
     }
 
     pub fn token_literal(self: *const IntegerLiteral) []const u8 {
@@ -176,6 +202,30 @@ pub const IntegerLiteral = struct {
 
     pub fn string(self: *const IntegerLiteral) []const u8 {
         return self.token_literal();
+    }
+};
+
+pub const PrefixExpression = struct {
+    token: token.Token,
+    operator: []const u8,
+    right: *const Expression,
+
+    pub fn init(expr: *const Expression) PrefixExpression {
+        return expr.prefix_expr;
+    }
+
+    pub fn token_literal(self: *const PrefixExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expression_node(self: *const PrefixExpression) Expression {
+        return self.right.*;
+    }
+
+    pub fn string(self: *const PrefixExpression) []const u8 {
+        var buf: [20]u8 = undefined;
+
+        return std.fmt.bufPrint(&buf, "{s}{s}", .{ self.operator, self.right.string() }) catch "unknown";
     }
 };
 

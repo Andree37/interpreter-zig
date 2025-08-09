@@ -42,6 +42,8 @@ pub const Parser = struct {
 
         try p.register_prefix(token.TokenType.ident, parse_identifier);
         try p.register_prefix(token.TokenType.int, parse_integer_literal);
+        try p.register_prefix(token.TokenType.bang, parse_prefix_expression);
+        try p.register_prefix(token.TokenType.minus, parse_prefix_expression);
 
         // read two tokens, so cur_token and peek_token are both set
         p.next_token();
@@ -51,6 +53,9 @@ pub const Parser = struct {
     }
 
     pub fn deinit(self: *Parser) void {
+        for (self.errors.items) |err| {
+            self.allocator.free(err);
+        }
         self.errors.deinit();
         self.prefix_parse_fns.deinit();
         self.infix_parse_fns.deinit();
@@ -66,13 +71,11 @@ pub const Parser = struct {
     }
 
     fn peek_error(self: *Parser, t: token.TokenType) void {
-        var buf: [128]u8 = undefined; //meh?
-        const msg = std.fmt.bufPrint(
-            &buf,
+        const msg = std.fmt.allocPrint(
+            self.allocator,
             "expected next token to be: {s}, but got: {s} instead",
             .{ @tagName(t), @tagName(self.peek_token.type) },
         ) catch return;
-
         _ = self.errors.append(msg) catch {};
     }
 
@@ -170,14 +173,53 @@ pub const Parser = struct {
         return expr;
     }
 
+    fn parse_prefix_expression(self: *Parser) ast.Expression {
+        const pre_token = self.cur_token;
+
+        self.next_token();
+
+        std.debug.print("found operator: {s}\n", .{pre_token.literal});
+
+        const right_expr = self.allocator.create(ast.Expression) catch {
+            return .{
+                .identifier = .{
+                    .token = pre_token,
+                    .value = pre_token.literal,
+                },
+            };
+        };
+        right_expr.* = self.parse_expression(ExprOrder.prefix).?;
+
+        std.debug.print("parse_prefix_expression right_expr: {s}\n", .{right_expr.token_literal()});
+        std.debug.print("parse_prefix_expression right_expr: {s}\n", .{right_expr.string()});
+
+        const expr: ast.Expression = .{
+            .prefix_expr = .{
+                .token = pre_token,
+                .operator = pre_token.literal,
+                .right = right_expr,
+            },
+        };
+
+        return expr;
+    }
+
+    fn no_prefix_parser_fn_error(self: *Parser, token_type: token.TokenType) void {
+        const msg = std.fmt.allocPrint(self.allocator, "no prefix parse function for {any} found, {s}", .{ token_type, self.*.cur_token.literal }) catch "unknown";
+        self.errors.append(msg) catch {};
+    }
+
     fn parse_expression(self: *Parser, _: ExprOrder) ?ast.Expression {
+        std.debug.print("ParseExpression finding a prefix function for: {any}\n", .{self.cur_token.type});
         const prefix = self.prefix_parse_fns.get(self.cur_token.type);
 
         if (prefix == null) {
+            self.no_prefix_parser_fn_error(self.cur_token.type);
             return null;
         }
 
         const leftExp = prefix.?(self);
+        std.debug.print("parse expression: {s}\n", .{leftExp.string()});
 
         return leftExp;
     }
@@ -245,9 +287,9 @@ pub const Parser = struct {
 
 test "test let statement" {
     const input =
-        \\\let x = 5;
-        \\\let y = 10;
-        \\\let foobar = 838383;
+        \\let x = 5;
+        \\let y = 10;
+        \\let foobar = 838383;
     ;
 
     var lex = lexer.Lexer.init(input);
@@ -259,7 +301,7 @@ test "test let statement" {
 
     // check parser errors
     for (p.errors.items) |err| {
-        std.debug.print("found bad err: {any}", .{err});
+        std.debug.print("found bad err: {s}", .{err});
     }
 
     try std.testing.expect(p.errors.items.len == 0);
@@ -282,9 +324,9 @@ test "test let statement" {
 
 test "test let bad input" {
     const input =
-        \\\let x 5;
-        \\\let y = 10;
-        \\\let foobar = 838383;
+        \\let x 5;
+        \\let y = 10;
+        \\let foobar = 838383;
     ;
 
     var lex = lexer.Lexer.init(input);
@@ -297,7 +339,7 @@ test "test let bad input" {
     // check parser errors
     for (p.errors.items) |err| {
         // should find one :D
-        std.debug.print("found bad err: {any}", .{err});
+        std.debug.print("found bad err: {s}", .{err});
     }
 
     try std.testing.expect(p.errors.items.len == 1);
@@ -305,9 +347,9 @@ test "test let bad input" {
 
 test "test return statements" {
     const input =
-        \\\return 5;
-        \\\return 10;
-        \\\return 838383;
+        \\return 5;
+        \\return 10;
+        \\return 838383;
     ;
 
     var lex = lexer.Lexer.init(input);
@@ -365,9 +407,53 @@ test "test integer literal expression" {
     try std.testing.expect(program.statements.items.len == 1);
 
     const stmt: ast.Statement = program.statements.getLast();
-    const int_literal = ast.IntegerLiteral.init(stmt);
+    const int_literal = ast.IntegerLiteral.init(&stmt.expr_stmt.expression);
 
     try std.testing.expect(int_literal.value == 5);
 
     try std.testing.expectEqualStrings("5", int_literal.token_literal());
+}
+
+test "test parsing prefix expression" {
+    std.debug.print("started test parsing prefix expression\n", .{});
+    const prefix_tests = [_]struct {
+        input: []const u8,
+        operator: []const u8,
+        int_value: i64,
+    }{
+        .{
+            .input = "!5;",
+            .operator = "!",
+            .int_value = 5,
+        },
+        .{
+            .input = "-15;",
+            .operator = "-",
+            .int_value = 15,
+        },
+    };
+
+    for (prefix_tests) |p_test| {
+        var lex = lexer.Lexer.init(p_test.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        try std.testing.expect(p.errors.items.len == 0);
+        try std.testing.expect(program.statements.items.len == 1);
+
+        const stmt: ast.Statement = program.statements.getLast();
+        const exp_stmt = stmt.expr_stmt;
+        const pre_expr = ast.PrefixExpression.init(&exp_stmt.expression);
+
+        try std.testing.expectEqualStrings(p_test.operator, pre_expr.operator);
+
+        const int_literal = ast.IntegerLiteral.init(pre_expr.right);
+        try std.testing.expectEqual(p_test.int_value, int_literal.value);
+        const str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{p_test.int_value});
+        defer std.testing.allocator.free(str_token_literal);
+
+        try std.testing.expectEqualStrings(str_token_literal, int_literal.token_literal());
+    }
 }
