@@ -21,9 +21,7 @@ pub const Statement = union(enum) {
             .let_stmt => |stmt| try stmt.string(writer),
             .return_stmt => |stmt| try stmt.string(writer),
             .expr_stmt => |stmt| {
-                try writer.print("{s}", .{
-                    stmt.string(),
-                });
+                try stmt.string(writer);
             },
         };
     }
@@ -52,13 +50,13 @@ pub const Expression = union(enum) {
         };
     }
 
-    pub fn string(self: *const Expression) []const u8 {
-        return switch (self.*) {
-            .identifier => |ident| ident.string(),
-            .integer_literal => |int_lit| int_lit.string(),
-            .prefix_expr => |expr| expr.string(),
-            .infix_expr => |expr| expr.string(),
-        };
+    pub fn string(self: *const Expression, writer: anytype) anyerror!void {
+        switch (self.*) {
+            .identifier => |ident| try ident.string(writer),
+            .integer_literal => |int_lit| try int_lit.string(writer),
+            .prefix_expr => |expr| try expr.string(writer),
+            .infix_expr => |expr| try expr.string(writer),
+        }
     }
 
     pub fn deinit(self: *const Expression, allocator: std.mem.Allocator) void {
@@ -127,8 +125,8 @@ pub const Identifier = struct {
         return self.token.literal;
     }
 
-    pub fn string(self: *const Identifier) []const u8 {
-        return self.value;
+    pub fn string(self: *const Identifier, writer: anytype) !void {
+        try writer.writeAll(self.value);
     }
 };
 
@@ -145,11 +143,12 @@ pub const LetStatement = struct {
 
     pub fn string(self: *const LetStatement, writer: anytype) !void {
         // TODO: need to add expressions
-        try writer.print("{s} {s} = {s};", .{
-            self.token_literal(),
-            self.name.string(),
-            self.value.string(),
-        });
+        try writer.writeAll(self.token_literal());
+        try writer.writeByte(' ');
+        try self.name.string(writer);
+        try writer.writeAll(" = ");
+        try self.value.string(writer);
+        try writer.writeByte(';');
     }
 
     fn token_literal(self: *const LetStatement) []const u8 {
@@ -169,9 +168,9 @@ pub const ReturnStatement = struct {
 
     pub fn string(self: *const ReturnStatement, writer: anytype) !void {
         // TODO: add expression
-        try writer.print("{s} ;", .{
-            self.token_literal(),
-        });
+        try writer.writeAll(self.token_literal());
+        try writer.writeByte(' ');
+        try writer.writeByte(';');
     }
 
     pub fn token_literal(self: *const ReturnStatement) []const u8 {
@@ -193,8 +192,8 @@ pub const ExpressionStatement = struct {
         return self.token.literal;
     }
 
-    pub fn string(self: *const ExpressionStatement) []const u8 {
-        return self.expression.string();
+    pub fn string(self: *const ExpressionStatement, writer: anytype) !void {
+        try self.expression.string(writer);
     }
 };
 
@@ -210,8 +209,8 @@ pub const IntegerLiteral = struct {
         return self.token.literal;
     }
 
-    pub fn string(self: *const IntegerLiteral) []const u8 {
-        return self.token_literal();
+    pub fn string(self: *const IntegerLiteral, writer: anytype) !void {
+        try writer.writeAll(self.token_literal());
     }
 };
 
@@ -232,10 +231,11 @@ pub const PrefixExpression = struct {
         return self.right.*;
     }
 
-    pub fn string(self: *const PrefixExpression) []const u8 {
-        var buf: [20]u8 = undefined;
-
-        return std.fmt.bufPrint(&buf, "{s}{s}", .{ self.operator, self.right.string() }) catch "unknown";
+    pub fn string(self: *const PrefixExpression, writer: anytype) !void {
+        try writer.writeByte('(');
+        try writer.writeAll(self.operator);
+        try self.right.string(writer);
+        try writer.writeByte(')');
     }
 };
 
@@ -257,10 +257,14 @@ pub const InfixExpression = struct {
         return self.right.*; // unsure whether this is true...
     }
 
-    pub fn string(self: *const InfixExpression) []const u8 {
-        var buf: [20]u8 = undefined;
-
-        return std.fmt.bufPrint(&buf, "{s} {s} {s}", .{ self.left.string(), self.operator, self.right.string() }) catch "unknown";
+    pub fn string(self: *const InfixExpression, writer: anytype) !void {
+        try writer.writeByte('(');
+        try self.left.string(writer);
+        try writer.writeByte(' ');
+        try writer.writeAll(self.operator);
+        try writer.writeByte(' ');
+        try self.right.string(writer);
+        try writer.writeByte(')');
     }
 };
 

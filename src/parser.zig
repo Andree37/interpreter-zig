@@ -301,7 +301,6 @@ pub const Parser = struct {
         }
 
         var leftExp = prefix.?(self);
-        std.debug.print("parse expression: {s}\n", .{leftExp.string()});
 
         while (!(self.peek_token.type == token.TokenType.semicolon) and @intFromEnum(precedence) < @intFromEnum(self.peek_precendence())) {
             const infix = self.infix_parse_fns.get(self.peek_token.type);
@@ -597,5 +596,43 @@ test "test parsing infix expressions" {
         const right_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{p_test.right_value});
         defer std.testing.allocator.free(right_str_token_literal);
         try std.testing.expectEqualStrings(right_str_token_literal, right_int_literal.token_literal());
+    }
+}
+
+test "test operator precedence parsing" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{ .input = "-a * b", .expected = "((-a) * b)" },
+        .{ .input = "!-a", .expected = "(!(-a))" },
+        .{ .input = "a + b + c", .expected = "((a + b) + c)" },
+        .{ .input = "a + b - c", .expected = "((a + b) - c)" },
+        .{ .input = "a * b * c", .expected = "((a * b) * c)" },
+        .{ .input = "a * b / c", .expected = "((a * b) / c)" },
+        .{ .input = "a + b / c", .expected = "(a + (b / c))" },
+        .{ .input = "a + b * c + d / e - f", .expected = "(((a + (b * c)) + (d / e)) - f)" },
+        .{ .input = "3 + 4; -5 * 5", .expected = "(3 + 4)((-5) * 5)" },
+        .{ .input = "5 > 4 == 3 < 4", .expected = "((5 > 4) == (3 < 4))" },
+        .{ .input = "5 < 4 != 3 > 4", .expected = "((5 < 4) != (3 > 4))" },
+        .{ .input = "3 + 4 * 5 == 3 * 1 + 4 * 5", .expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" },
+    };
+
+    for (tests) |t| {
+        var lex = lexer.Lexer.init(t.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        for (p.errors.items) |err| {
+            std.debug.print("dumb err: {s}\n", .{err});
+        }
+        try std.testing.expect(p.errors.items.len == 0);
+
+        const actual = try program.string();
+        defer std.testing.allocator.free(actual);
+
+        try std.testing.expectEqualStrings(t.expected, actual);
     }
 }
