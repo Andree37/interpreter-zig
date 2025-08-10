@@ -41,12 +41,14 @@ pub const Expression = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
     prefix_expr: PrefixExpression,
+    infix_expr: InfixExpression,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
             .identifier => |ident| ident.token_literal(),
             .integer_literal => |int_lit| int_lit.token_literal(),
             .prefix_expr => |expr| expr.token_literal(),
+            .infix_expr => |expr| expr.token_literal(),
         };
     }
 
@@ -55,6 +57,7 @@ pub const Expression = union(enum) {
             .identifier => |ident| ident.string(),
             .integer_literal => |int_lit| int_lit.string(),
             .prefix_expr => |expr| expr.string(),
+            .infix_expr => |expr| expr.string(),
         };
     }
 
@@ -63,8 +66,15 @@ pub const Expression = union(enum) {
             .identifier => {},
             .integer_literal => {},
             .prefix_expr => |prefix| {
-                prefix.right.deinit(allocator); // recursively free right expression
+                prefix.right.deinit(allocator); // recursively free
                 allocator.destroy(prefix.right);
+            },
+            .infix_expr => |infix| {
+                infix.right.deinit(allocator);
+                allocator.destroy(infix.right);
+
+                infix.left.deinit(allocator);
+                allocator.destroy(infix.left);
             },
         }
     }
@@ -226,6 +236,31 @@ pub const PrefixExpression = struct {
         var buf: [20]u8 = undefined;
 
         return std.fmt.bufPrint(&buf, "{s}{s}", .{ self.operator, self.right.string() }) catch "unknown";
+    }
+};
+
+pub const InfixExpression = struct {
+    token: token.Token,
+    left: *const Expression,
+    operator: []const u8,
+    right: *const Expression,
+
+    pub fn init(expr: *const Expression) InfixExpression {
+        return expr.infix_expr;
+    }
+
+    pub fn token_literal(self: *const InfixExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expression_node(self: *const InfixExpression) Expression {
+        return self.right.*; // unsure whether this is true...
+    }
+
+    pub fn string(self: *const InfixExpression) []const u8 {
+        var buf: [20]u8 = undefined;
+
+        return std.fmt.bufPrint(&buf, "{s} {s} {s}", .{ self.left.string(), self.operator, self.right.string() }) catch "unknown";
     }
 };
 

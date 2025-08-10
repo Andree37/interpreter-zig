@@ -16,6 +16,28 @@ pub const ExprOrder = enum {
     prefix, // -X or !X
     call, // my_function(X)
 };
+const PrecendecesEntry = struct {
+    key: token.TokenType,
+    value: ExprOrder,
+};
+
+const precendences = [_]PrecendecesEntry{
+    .{ .key = .eq, .value = .equals },
+    .{ .key = .not_eq, .value = .equals },
+    .{ .key = .lt, .value = .lessgreater },
+    .{ .key = .gt, .value = .lessgreater },
+    .{ .key = .plus, .value = .sum },
+    .{ .key = .minus, .value = .sum },
+    .{ .key = .slash, .value = .product },
+    .{ .key = .asterisk, .value = .product },
+};
+
+fn lookup(key: token.TokenType) ?ExprOrder {
+    inline for (precendences) |entry| {
+        if (entry.key == key) return entry.value;
+    }
+    return null;
+}
 
 pub const Parser = struct {
     allocator: std.mem.Allocator,
@@ -40,10 +62,21 @@ pub const Parser = struct {
             .infix_parse_fns = std.AutoHashMap(token.TokenType, infixParseFn).init(allocator),
         };
 
+        // prefix
         try p.register_prefix(token.TokenType.ident, parse_identifier);
         try p.register_prefix(token.TokenType.int, parse_integer_literal);
         try p.register_prefix(token.TokenType.bang, parse_prefix_expression);
         try p.register_prefix(token.TokenType.minus, parse_prefix_expression);
+
+        // infix
+        try p.register_infix(token.TokenType.plus, parse_infix_expression);
+        try p.register_infix(token.TokenType.minus, parse_infix_expression);
+        try p.register_infix(token.TokenType.slash, parse_infix_expression);
+        try p.register_infix(token.TokenType.asterisk, parse_infix_expression);
+        try p.register_infix(token.TokenType.eq, parse_infix_expression);
+        try p.register_infix(token.TokenType.not_eq, parse_infix_expression);
+        try p.register_infix(token.TokenType.lt, parse_infix_expression);
+        try p.register_infix(token.TokenType.gt, parse_infix_expression);
 
         // read two tokens, so cur_token and peek_token are both set
         p.next_token();
@@ -59,6 +92,22 @@ pub const Parser = struct {
         self.errors.deinit();
         self.prefix_parse_fns.deinit();
         self.infix_parse_fns.deinit();
+    }
+
+    fn peek_precendence(self: *Parser) ExprOrder {
+        if (lookup(self.peek_token.type)) |l| {
+            return l;
+        }
+
+        return ExprOrder.lowest;
+    }
+
+    fn cur_precendence(self: *Parser) ExprOrder {
+        if (lookup(self.cur_token.type)) |l| {
+            return l;
+        }
+
+        return ExprOrder.lowest;
     }
 
     fn expect_peek(self: *Parser, t: token.TokenType) bool {
@@ -173,12 +222,48 @@ pub const Parser = struct {
         return expr;
     }
 
+    fn parse_infix_expression(self: *Parser, left: ast.Expression) ast.Expression {
+        const infix_token = self.cur_token;
+        const precedence = self.cur_precendence();
+
+        self.next_token();
+
+        const right_expr = self.allocator.create(ast.Expression) catch {
+            return .{
+                .identifier = .{
+                    .token = infix_token,
+                    .value = infix_token.literal,
+                },
+            };
+        };
+        right_expr.* = self.parse_expression(precedence).?;
+
+        const left_expr = self.allocator.create(ast.Expression) catch {
+            return .{
+                .identifier = .{
+                    .token = infix_token,
+                    .value = infix_token.literal,
+                },
+            };
+        };
+        left_expr.* = left;
+
+        const expr: ast.Expression = .{
+            .infix_expr = .{
+                .left = left_expr,
+                .token = infix_token,
+                .operator = infix_token.literal,
+                .right = right_expr,
+            },
+        };
+
+        return expr;
+    }
+
     fn parse_prefix_expression(self: *Parser) ast.Expression {
         const pre_token = self.cur_token;
 
         self.next_token();
-
-        std.debug.print("found operator: {s}\n", .{pre_token.literal});
 
         const right_expr = self.allocator.create(ast.Expression) catch {
             return .{
@@ -189,9 +274,6 @@ pub const Parser = struct {
             };
         };
         right_expr.* = self.parse_expression(ExprOrder.prefix).?;
-
-        std.debug.print("parse_prefix_expression right_expr: {s}\n", .{right_expr.token_literal()});
-        std.debug.print("parse_prefix_expression right_expr: {s}\n", .{right_expr.string()});
 
         const expr: ast.Expression = .{
             .prefix_expr = .{
@@ -209,7 +291,7 @@ pub const Parser = struct {
         self.errors.append(msg) catch {};
     }
 
-    fn parse_expression(self: *Parser, _: ExprOrder) ?ast.Expression {
+    fn parse_expression(self: *Parser, precedence: ExprOrder) ?ast.Expression {
         std.debug.print("ParseExpression finding a prefix function for: {any}\n", .{self.cur_token.type});
         const prefix = self.prefix_parse_fns.get(self.cur_token.type);
 
@@ -218,8 +300,20 @@ pub const Parser = struct {
             return null;
         }
 
-        const leftExp = prefix.?(self);
+        var leftExp = prefix.?(self);
         std.debug.print("parse expression: {s}\n", .{leftExp.string()});
+
+        while (!(self.peek_token.type == token.TokenType.semicolon) and @intFromEnum(precedence) < @intFromEnum(self.peek_precendence())) {
+            const infix = self.infix_parse_fns.get(self.peek_token.type);
+
+            if (infix == null) {
+                return leftExp;
+            }
+
+            self.next_token();
+
+            leftExp = infix.?(self, leftExp);
+        }
 
         return leftExp;
     }
@@ -280,8 +374,8 @@ pub const Parser = struct {
         try self.prefix_parse_fns.put(token_type, prefix_parser_fn);
     }
 
-    pub fn register_infix(self: *Parser, token_type: token.TokenType, infix_parser_fn: infixParseFn) void {
-        self.infix_parse_fns.put(token_type, infix_parser_fn);
+    pub fn register_infix(self: *Parser, token_type: token.TokenType, infix_parser_fn: infixParseFn) !void {
+        try self.infix_parse_fns.put(token_type, infix_parser_fn);
     }
 };
 
@@ -455,5 +549,53 @@ test "test parsing prefix expression" {
         defer std.testing.allocator.free(str_token_literal);
 
         try std.testing.expectEqualStrings(str_token_literal, int_literal.token_literal());
+    }
+}
+
+test "test parsing infix expressions" {
+    std.debug.print("started test parsing infix expressions\n", .{});
+    const inxfix_tests = [_]struct {
+        input: []const u8,
+        left_value: i64,
+        operator: []const u8,
+        right_value: i64,
+    }{
+        .{ .input = "5+5;", .left_value = 5, .operator = "+", .right_value = 5 },
+        .{ .input = "5-5;", .left_value = 5, .operator = "-", .right_value = 5 },
+        .{ .input = "5*5;", .left_value = 5, .operator = "*", .right_value = 5 },
+        .{ .input = "5/5;", .left_value = 5, .operator = "/", .right_value = 5 },
+        .{ .input = "5>5;", .left_value = 5, .operator = ">", .right_value = 5 },
+        .{ .input = "5<5;", .left_value = 5, .operator = "<", .right_value = 5 },
+        .{ .input = "5==5;", .left_value = 5, .operator = "==", .right_value = 5 },
+        .{ .input = "5!=5;", .left_value = 5, .operator = "!=", .right_value = 5 },
+    };
+
+    for (inxfix_tests) |p_test| {
+        var lex = lexer.Lexer.init(p_test.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        try std.testing.expect(p.errors.items.len == 0);
+        try std.testing.expect(program.statements.items.len == 1);
+
+        const stmt: ast.Statement = program.statements.getLast();
+        const exp_stmt = stmt.expr_stmt;
+        const inf_expr = ast.InfixExpression.init(&exp_stmt.expression);
+
+        try std.testing.expectEqualStrings(p_test.operator, inf_expr.operator);
+
+        const left_int_literal = ast.IntegerLiteral.init(inf_expr.left);
+        try std.testing.expectEqual(p_test.left_value, left_int_literal.value);
+        const left_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{p_test.left_value});
+        defer std.testing.allocator.free(left_str_token_literal);
+        try std.testing.expectEqualStrings(left_str_token_literal, left_int_literal.token_literal());
+
+        const right_int_literal = ast.IntegerLiteral.init(inf_expr.right);
+        try std.testing.expectEqual(p_test.left_value, right_int_literal.value);
+        const right_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{p_test.right_value});
+        defer std.testing.allocator.free(right_str_token_literal);
+        try std.testing.expectEqualStrings(right_str_token_literal, right_int_literal.token_literal());
     }
 }
