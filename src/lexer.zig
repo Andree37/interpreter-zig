@@ -257,8 +257,8 @@ test "some monkey code" {
     for (tests.items) |t| {
         const tok = l.next_token();
 
-        // std.debug.print("Expected: {s}, got: {s}\n", .{ t.literal, tok.literal });
-        // std.debug.print("Expected: {any}, got: {any}\n", .{ t.type, tok.type });
+        std.debug.print("Expected: {s}, got: {s}\n", .{ t.literal, tok.literal });
+        std.debug.print("Expected: {any}, got: {any}\n", .{ t.type, tok.type });
 
         try std.testing.expectEqual(t.type, tok.type);
         try std.testing.expect(std.mem.eql(u8, t.literal, tok.literal));

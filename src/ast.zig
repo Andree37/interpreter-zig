@@ -20,9 +20,7 @@ pub const Statement = union(enum) {
         return switch (self.*) {
             .let_stmt => |stmt| try stmt.string(writer),
             .return_stmt => |stmt| try stmt.string(writer),
-            .expr_stmt => |stmt| {
-                try stmt.string(writer);
-            },
+            .expr_stmt => |stmt| try stmt.string(writer),
         };
     }
 
@@ -273,8 +271,6 @@ test "test string" {
 
     var program = Program.init(alloc);
     defer program.deinit();
-
-    // let my_var = another_var;
 
     const let_statement: LetStatement = .{
         .token = .{
