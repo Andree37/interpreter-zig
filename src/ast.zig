@@ -38,6 +38,7 @@ pub const Expression = union(enum) {
     integer_literal: IntegerLiteral,
     prefix_expr: PrefixExpression,
     infix_expr: InfixExpression,
+    bool_expr: Boolean,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
@@ -45,6 +46,7 @@ pub const Expression = union(enum) {
             .integer_literal => |int_lit| int_lit.token_literal(),
             .prefix_expr => |expr| expr.token_literal(),
             .infix_expr => |expr| expr.token_literal(),
+            .bool_expr => |expr| expr.token_literal(),
         };
     }
 
@@ -54,6 +56,7 @@ pub const Expression = union(enum) {
             .integer_literal => |int_lit| try int_lit.string(writer),
             .prefix_expr => |expr| try expr.string(writer),
             .infix_expr => |expr| try expr.string(writer),
+            .bool_expr => |expr| try expr.string(writer),
         }
     }
 
@@ -72,6 +75,7 @@ pub const Expression = union(enum) {
                 infix.left.deinit(allocator);
                 allocator.destroy(infix.left);
             },
+            .bool_expr => {},
         }
     }
 };
@@ -263,6 +267,27 @@ pub const InfixExpression = struct {
         try writer.writeByte(' ');
         try self.right.string(writer);
         try writer.writeByte(')');
+    }
+};
+
+pub const Boolean = struct {
+    token: token.Token,
+    value: bool,
+
+    pub fn init(expr: *const Expression) Boolean {
+        return expr.bool_expr;
+    }
+
+    pub fn expression_node(_: *const Boolean) void {
+        return;
+    }
+
+    pub fn token_literal(self: *const Boolean) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const Boolean, writer: anytype) !void {
+        try writer.writeAll(self.token_literal());
     }
 };
 

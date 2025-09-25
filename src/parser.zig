@@ -67,6 +67,8 @@ pub const Parser = struct {
         try p.register_prefix(token.TokenType.int, parse_integer_literal);
         try p.register_prefix(token.TokenType.bang, parse_prefix_expression);
         try p.register_prefix(token.TokenType.minus, parse_prefix_expression);
+        try p.register_prefix(token.TokenType.true, parse_boolean);
+        try p.register_prefix(token.TokenType.false, parse_boolean);
 
         // infix
         try p.register_infix(token.TokenType.plus, parse_infix_expression);
@@ -280,6 +282,19 @@ pub const Parser = struct {
                 .token = pre_token,
                 .operator = pre_token.literal,
                 .right = right_expr,
+            },
+        };
+
+        return expr;
+    }
+
+    fn parse_boolean(self: *Parser) ast.Expression {
+        const pre_token = self.cur_token;
+
+        const expr: ast.Expression = .{
+            .bool_expr = .{
+                .token = pre_token,
+                .value = pre_token.type == token.TokenType.true,
             },
         };
 
@@ -551,6 +566,49 @@ test "test parsing prefix expression" {
     }
 }
 
+test "test parsing boolean prefix expression" {
+    const prefix_tests = [_]struct {
+        input: []const u8,
+        operator: []const u8,
+        int_value: bool,
+    }{
+        .{
+            .input = "!true;",
+            .operator = "!",
+            .int_value = true,
+        },
+        .{
+            .input = "!false;",
+            .operator = "!",
+            .int_value = false,
+        },
+    };
+
+    for (prefix_tests) |p_test| {
+        var lex = lexer.Lexer.init(p_test.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        try std.testing.expect(p.errors.items.len == 0);
+        try std.testing.expect(program.statements.items.len == 1);
+
+        const stmt: ast.Statement = program.statements.getLast();
+        const exp_stmt = stmt.expr_stmt;
+        const pre_expr = ast.PrefixExpression.init(&exp_stmt.expression);
+
+        try std.testing.expectEqualStrings(p_test.operator, pre_expr.operator);
+
+        const bool_literal = ast.Boolean.init(pre_expr.right);
+        try std.testing.expectEqual(p_test.int_value, bool_literal.value);
+        const str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{}", .{p_test.int_value});
+        defer std.testing.allocator.free(str_token_literal);
+
+        try std.testing.expectEqualStrings(str_token_literal, bool_literal.token_literal());
+    }
+}
+
 test "test parsing infix expressions" {
     std.debug.print("started test parsing infix expressions\n", .{});
     const inxfix_tests = [_]struct {
@@ -592,10 +650,53 @@ test "test parsing infix expressions" {
         try std.testing.expectEqualStrings(left_str_token_literal, left_int_literal.token_literal());
 
         const right_int_literal = ast.IntegerLiteral.init(inf_expr.right);
-        try std.testing.expectEqual(p_test.left_value, right_int_literal.value);
+        try std.testing.expectEqual(p_test.right_value, right_int_literal.value);
         const right_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{p_test.right_value});
         defer std.testing.allocator.free(right_str_token_literal);
         try std.testing.expectEqualStrings(right_str_token_literal, right_int_literal.token_literal());
+    }
+}
+
+test "test parsing boolean infix expressions" {
+    std.debug.print("started test parsing infix expressions\n", .{});
+    const inxfix_tests = [_]struct {
+        input: []const u8,
+        left_value: bool,
+        operator: []const u8,
+        right_value: bool,
+    }{
+        .{ .input = "true == true;", .left_value = true, .operator = "==", .right_value = true },
+        .{ .input = "true != false;", .left_value = true, .operator = "!=", .right_value = false },
+        .{ .input = "false == false;", .left_value = false, .operator = "==", .right_value = false },
+    };
+
+    for (inxfix_tests) |p_test| {
+        var lex = lexer.Lexer.init(p_test.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        try std.testing.expect(p.errors.items.len == 0);
+        try std.testing.expect(program.statements.items.len == 1);
+
+        const stmt: ast.Statement = program.statements.getLast();
+        const exp_stmt = stmt.expr_stmt;
+        const inf_expr = ast.InfixExpression.init(&exp_stmt.expression);
+
+        try std.testing.expectEqualStrings(p_test.operator, inf_expr.operator);
+
+        const left_bool_literal = ast.Boolean.init(inf_expr.left);
+        try std.testing.expectEqual(p_test.left_value, left_bool_literal.value);
+        const left_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{}", .{p_test.left_value});
+        defer std.testing.allocator.free(left_str_token_literal);
+        try std.testing.expectEqualStrings(left_str_token_literal, left_bool_literal.token_literal());
+
+        const right_bool_literal = ast.Boolean.init(inf_expr.right);
+        try std.testing.expectEqual(p_test.right_value, right_bool_literal.value);
+        const right_str_token_literal = try std.fmt.allocPrint(std.testing.allocator, "{}", .{p_test.right_value});
+        defer std.testing.allocator.free(right_str_token_literal);
+        try std.testing.expectEqualStrings(right_str_token_literal, right_bool_literal.token_literal());
     }
 }
 
@@ -616,6 +717,10 @@ test "test operator precedence parsing" {
         .{ .input = "5 > 4 == 3 < 4", .expected = "((5 > 4) == (3 < 4))" },
         .{ .input = "5 < 4 != 3 > 4", .expected = "((5 < 4) != (3 > 4))" },
         .{ .input = "3 + 4 * 5 == 3 * 1 + 4 * 5", .expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" },
+        .{ .input = "true", .expected = "true" },
+        .{ .input = "false", .expected = "false" },
+        .{ .input = "3 > 5 == false", .expected = "((3 > 5) == false)" },
+        .{ .input = "3 < 5 == true", .expected = "((3 < 5) == true)" },
     };
 
     for (tests) |t| {
@@ -635,4 +740,25 @@ test "test operator precedence parsing" {
 
         try std.testing.expectEqualStrings(t.expected, actual);
     }
+}
+
+test "test boolean literal" {
+    const input = "true;";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const bool_literal = ast.Boolean.init(&stmt.expr_stmt.expression);
+
+    try std.testing.expect(bool_literal.value);
+    try std.testing.expectEqualStrings("true", bool_literal.token_literal());
 }
