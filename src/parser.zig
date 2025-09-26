@@ -4,8 +4,8 @@ const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 const ast = @import("ast.zig");
 
-const prefixParseFn = *const fn (*Parser) ast.Expression;
-const infixParseFn = *const fn (*Parser, ast.Expression) ast.Expression;
+const prefixParseFn = *const fn (*Parser) ?ast.Expression;
+const infixParseFn = *const fn (*Parser, ast.Expression) ?ast.Expression;
 
 pub const ExprOrder = enum {
     lowest,
@@ -69,6 +69,7 @@ pub const Parser = struct {
         try p.register_prefix(token.TokenType.minus, parse_prefix_expression);
         try p.register_prefix(token.TokenType.true, parse_boolean);
         try p.register_prefix(token.TokenType.false, parse_boolean);
+        try p.register_prefix(token.TokenType.l_paren, parse_grouped_expression);
 
         // infix
         try p.register_infix(token.TokenType.plus, parse_infix_expression);
@@ -209,7 +210,7 @@ pub const Parser = struct {
         return stmt;
     }
 
-    fn parse_integer_literal(self: *Parser) ast.Expression {
+    fn parse_integer_literal(self: *Parser) ?ast.Expression {
         const int_token = self.cur_token;
 
         const value = std.fmt.parseInt(i64, int_token.literal, 10) catch 0;
@@ -224,7 +225,7 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parse_infix_expression(self: *Parser, left: ast.Expression) ast.Expression {
+    fn parse_infix_expression(self: *Parser, left: ast.Expression) ?ast.Expression {
         const infix_token = self.cur_token;
         const precedence = self.cur_precendence();
 
@@ -262,7 +263,7 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parse_prefix_expression(self: *Parser) ast.Expression {
+    fn parse_prefix_expression(self: *Parser) ?ast.Expression {
         const pre_token = self.cur_token;
 
         self.next_token();
@@ -288,7 +289,7 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parse_boolean(self: *Parser) ast.Expression {
+    fn parse_boolean(self: *Parser) ?ast.Expression {
         const pre_token = self.cur_token;
 
         const expr: ast.Expression = .{
@@ -297,6 +298,21 @@ pub const Parser = struct {
                 .value = pre_token.type == token.TokenType.true,
             },
         };
+
+        return expr;
+    }
+
+    fn parse_grouped_expression(self: *Parser) ?ast.Expression {
+        self.next_token();
+
+        const expr = self.parse_expression(ExprOrder.lowest);
+        if (expr == null) {
+            return null;
+        }
+
+        if (!self.expect_peek(token.TokenType.r_paren)) {
+            return null;
+        }
 
         return expr;
     }
@@ -326,13 +342,16 @@ pub const Parser = struct {
 
             self.next_token();
 
-            leftExp = infix.?(self, leftExp);
+            leftExp = infix.?(self, leftExp.?);
+            if (leftExp == null) {
+                return null;
+            }
         }
 
         return leftExp;
     }
 
-    fn parse_identifier(self: *Parser) ast.Expression {
+    fn parse_identifier(self: *Parser) ?ast.Expression {
         return .{
             .identifier = .{
                 .token = self.cur_token,
@@ -721,6 +740,11 @@ test "test operator precedence parsing" {
         .{ .input = "false", .expected = "false" },
         .{ .input = "3 > 5 == false", .expected = "((3 > 5) == false)" },
         .{ .input = "3 < 5 == true", .expected = "((3 < 5) == true)" },
+        .{ .input = "1 + (2 + 3) + 4", .expected = "((1 + (2 + 3)) + 4)" },
+        .{ .input = "(5 + 5) * 2", .expected = "((5 + 5) * 2)" },
+        .{ .input = "2 / (5 + 5)", .expected = "(2 / (5 + 5))" },
+        .{ .input = "-(5 + 5)", .expected = "(-(5 + 5))" },
+        .{ .input = "!(true == true)", .expected = "(!(true == true))" },
     };
 
     for (tests) |t| {
