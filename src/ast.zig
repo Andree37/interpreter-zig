@@ -39,6 +39,7 @@ pub const Expression = union(enum) {
     prefix_expr: PrefixExpression,
     infix_expr: InfixExpression,
     bool_expr: Boolean,
+    if_expr: IfExpression,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
@@ -47,6 +48,7 @@ pub const Expression = union(enum) {
             .prefix_expr => |expr| expr.token_literal(),
             .infix_expr => |expr| expr.token_literal(),
             .bool_expr => |expr| expr.token_literal(),
+            .if_expr => |expr| expr.token_literal(),
         };
     }
 
@@ -57,6 +59,7 @@ pub const Expression = union(enum) {
             .prefix_expr => |expr| try expr.string(writer),
             .infix_expr => |expr| try expr.string(writer),
             .bool_expr => |expr| try expr.string(writer),
+            .if_expr => |expr| try expr.string(writer),
         }
     }
 
@@ -65,7 +68,7 @@ pub const Expression = union(enum) {
             .identifier => {},
             .integer_literal => {},
             .prefix_expr => |prefix| {
-                prefix.right.deinit(allocator); // recursively free
+                prefix.right.deinit(allocator);
                 allocator.destroy(prefix.right);
             },
             .infix_expr => |infix| {
@@ -76,6 +79,18 @@ pub const Expression = union(enum) {
                 allocator.destroy(infix.left);
             },
             .bool_expr => {},
+            .if_expr => |expr| {
+                expr.condition.deinit(allocator);
+                allocator.destroy(expr.condition);
+
+                expr.consequence.deinit(allocator);
+                allocator.destroy(expr.consequence);
+
+                if (expr.alternative != null) {
+                    expr.alternative.?.deinit(allocator);
+                    allocator.destroy(expr.alternative.?);
+                }
+            },
         }
     }
 };
@@ -288,6 +303,65 @@ pub const Boolean = struct {
 
     pub fn string(self: *const Boolean, writer: anytype) !void {
         try writer.writeAll(self.token_literal());
+    }
+};
+
+pub const IfExpression = struct {
+    token: token.Token,
+    condition: *const Expression,
+    consequence: *BlockStatement,
+    alternative: ?*BlockStatement,
+
+    pub fn init(expr: *const Expression) IfExpression {
+        return expr.if_expr;
+    }
+
+    pub fn expression_node(_: *const IfExpression) void {
+        return;
+    }
+
+    pub fn token_literal(self: *const IfExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const IfExpression, writer: anytype) !void {
+        try writer.writeAll("if");
+
+        try self.condition.string(writer);
+
+        try writer.writeByte(' ');
+        try self.consequence.string(writer);
+
+        if (self.alternative != null) {
+            try writer.writeAll("else ");
+            try self.alternative.?.string(writer);
+        }
+    }
+};
+
+pub const BlockStatement = struct {
+    token: token.Token,
+    statements: std.ArrayList(Statement),
+
+    pub fn deinit(self: *BlockStatement, allocator: std.mem.Allocator) void {
+        for (self.statements.items) |stmt| {
+            stmt.deinit(allocator);
+        }
+        self.statements.deinit();
+    }
+
+    pub fn statement_node(_: *BlockStatement) void {
+        return;
+    }
+
+    pub fn token_literal(self: *BlockStatement) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *BlockStatement, writer: anytype) !void {
+        for (self.statements.items) |stmt| {
+            try stmt.string(writer);
+        }
     }
 };
 

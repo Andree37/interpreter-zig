@@ -70,6 +70,7 @@ pub const Parser = struct {
         try p.register_prefix(token.TokenType.true, parse_boolean);
         try p.register_prefix(token.TokenType.false, parse_boolean);
         try p.register_prefix(token.TokenType.l_paren, parse_grouped_expression);
+        try p.register_prefix(token.TokenType.kif, parse_if_expression);
 
         // infix
         try p.register_infix(token.TokenType.plus, parse_infix_expression);
@@ -315,6 +316,89 @@ pub const Parser = struct {
         }
 
         return expr;
+    }
+
+    fn parse_if_expression(self: *Parser) ?ast.Expression {
+        const cur_token = self.cur_token;
+
+        if (!self.expect_peek(token.TokenType.l_paren)) {
+            return null;
+        }
+
+        self.next_token();
+        const condition = self.allocator.create(ast.Expression) catch {
+            return null;
+        };
+        const par_expr = self.parse_expression(ExprOrder.lowest);
+        if (par_expr == null) {
+            return null;
+        }
+
+        condition.* = par_expr.?;
+
+        if (!self.expect_peek(token.TokenType.r_paren)) {
+            return null;
+        }
+
+        if (!self.expect_peek(token.TokenType.l_brace)) {
+            return null;
+        }
+
+        const block_statement = self.parse_block_statement();
+        if (block_statement == null) {
+            return null;
+        }
+
+        var alternative: ?*ast.BlockStatement = null;
+        if (self.peek_token.type == token.TokenType.kelse) {
+            self.next_token();
+
+            if (!self.expect_peek(token.TokenType.l_brace)) {
+                return null;
+            }
+
+            std.debug.print("I AM A POTATO", .{});
+            alternative = self.parse_block_statement();
+        }
+
+        const if_expr = ast.IfExpression{
+            .token = cur_token,
+            .condition = condition,
+            .consequence = block_statement.?,
+            .alternative = alternative,
+        };
+
+        const expr = ast.Expression{ .if_expr = if_expr };
+
+        return expr;
+    }
+
+    fn parse_block_statement(self: *Parser) ?*ast.BlockStatement {
+        const cur_token = self.cur_token;
+
+        var statements = std.ArrayList(ast.Statement).init(self.allocator);
+
+        self.next_token();
+
+        while (!(self.cur_token.type == token.TokenType.r_brace) and !(self.cur_token.type == token.TokenType.eof)) {
+            const stmt = self.parse_statement();
+
+            if (stmt != null) {
+                statements.append(stmt.?) catch {
+                    continue;
+                };
+            }
+            self.next_token();
+        }
+
+        const block_statement = self.allocator.create(ast.BlockStatement) catch {
+            return null;
+        };
+
+        block_statement.statements = statements;
+        block_statement.token = cur_token;
+
+        return block_statement;
     }
 
     fn no_prefix_parser_fn_error(self: *Parser, token_type: token.TokenType) void {
@@ -785,4 +869,36 @@ test "test boolean literal" {
 
     try std.testing.expect(bool_literal.value);
     try std.testing.expectEqualStrings("true", bool_literal.token_literal());
+}
+
+test "test if expression" {
+    const input = "if (x < y) { x } else { y }";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const expr = stmt.expr_stmt;
+    const if_expr = ast.IfExpression.init(&expr.expression);
+
+    try std.testing.expectEqualStrings("x", if_expr.condition.infix_expr.left.*.token_literal());
+    try std.testing.expectEqualStrings("<", if_expr.condition.token_literal());
+    try std.testing.expectEqualStrings("y", if_expr.condition.infix_expr.right.*.token_literal());
+
+    try std.testing.expect(if_expr.consequence.statements.items.len == 1);
+
+    const consequence = if_expr.consequence.statements.items[0];
+    try std.testing.expectEqualStrings("x", consequence.expr_stmt.expression.token_literal());
+
+    try std.testing.expect(if_expr.alternative.?.statements.items.len == 1);
+    const alternative = if_expr.alternative.?.statements.items[0];
+    try std.testing.expectEqualStrings("y", alternative.expr_stmt.expression.token_literal());
 }
