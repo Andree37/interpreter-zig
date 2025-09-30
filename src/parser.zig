@@ -71,6 +71,7 @@ pub const Parser = struct {
         try p.register_prefix(token.TokenType.false, parse_boolean);
         try p.register_prefix(token.TokenType.l_paren, parse_grouped_expression);
         try p.register_prefix(token.TokenType.kif, parse_if_expression);
+        try p.register_prefix(token.TokenType.function, parse_function_literal);
 
         // infix
         try p.register_infix(token.TokenType.plus, parse_infix_expression);
@@ -371,6 +372,67 @@ pub const Parser = struct {
         const expr = ast.Expression{ .if_expr = if_expr };
 
         return expr;
+    }
+
+    fn parse_function_literal(self: *Parser) ?ast.Expression {
+        const cur_token = self.cur_token;
+
+        if (!self.expect_peek(token.TokenType.l_paren)) {
+            return null;
+        }
+
+        const params = self.parse_function_params() catch {
+            return null;
+        };
+
+        if (params == null) {
+            return null;
+        }
+
+        if (!self.expect_peek(token.TokenType.l_brace)) {
+            return null;
+        }
+
+        const body = self.parse_block_statement();
+        if (body == null) {
+            return null;
+        }
+
+        const fun_lit = ast.FunctionLiteral{
+            .body = body.?,
+            .parameters = params.?,
+            .token = cur_token,
+        };
+
+        return ast.Expression{ .func_literal = fun_lit };
+    }
+
+    fn parse_function_params(self: *Parser) !?std.ArrayList(ast.Identifier) {
+        var identifiers = std.ArrayList(ast.Identifier).init(self.allocator);
+
+        if (self.peek_token.type == token.TokenType.r_paren) {
+            self.next_token();
+            return identifiers;
+        }
+
+        self.next_token();
+
+        const cur_token = self.cur_token;
+        const ident = ast.Identifier{ .token = cur_token, .value = cur_token.literal };
+
+        try identifiers.append(ident);
+
+        while (self.peek_token.type == token.TokenType.comma) {
+            self.next_token();
+            self.next_token();
+            try identifiers.append(ast.Identifier{ .token = self.cur_token, .value = self.cur_token.literal });
+        }
+
+        if (!self.expect_peek(token.TokenType.r_paren)) {
+            return null;
+        }
+
+        return identifiers;
     }
 
     fn parse_block_statement(self: *Parser) ?*ast.BlockStatement {
@@ -901,4 +963,72 @@ test "test if expression" {
     try std.testing.expect(if_expr.alternative.?.statements.items.len == 1);
     const alternative = if_expr.alternative.?.statements.items[0];
     try std.testing.expectEqualStrings("y", alternative.expr_stmt.expression.token_literal());
+}
+
+test "test function literal parsing" {
+    const input = "fn(x, y) { x + y; }";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    for (p.errors.items) |err| {
+        std.debug.print("Found error: {s}\n", .{err});
+    }
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const expr = stmt.expr_stmt;
+    const fun_literal = ast.FunctionLiteral.init(&expr.expression);
+
+    try std.testing.expect(fun_literal.parameters.items.len == 2);
+
+    try std.testing.expectEqualStrings("x", fun_literal.parameters.items[0].value);
+    try std.testing.expectEqualStrings("y", fun_literal.parameters.items[1].value);
+
+    try std.testing.expect(fun_literal.body.statements.items.len == 1);
+
+    const body_stmt = ast.ExpressionStatement.init(fun_literal.body.statements.items[0]);
+    try std.testing.expectEqualStrings("x", body_stmt.expression.infix_expr.left.*.token_literal());
+    try std.testing.expectEqualStrings("+", body_stmt.expression.infix_expr.operator);
+    try std.testing.expectEqualStrings("y", body_stmt.expression.infix_expr.right.*.token_literal());
+}
+
+test "test function parameter parsing" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: []const []const u8,
+    }{
+        .{ .input = "fn() {};", .expected = &.{} },
+        .{ .input = "fn(x) {};", .expected = &.{"x"} },
+        .{ .input = "fn(x, y, z) {};", .expected = &.{ "x", "y", "z" } },
+    };
+
+    for (tests) |t| {
+        var lex = lexer.Lexer.init(t.input);
+        var p = try Parser.init(std.testing.allocator, &lex);
+        defer p.deinit();
+        var program = try p.parse_program(std.testing.allocator);
+        defer program.deinit();
+
+        for (p.errors.items) |err| {
+            std.debug.print("dumb err: {s}\n", .{err});
+        }
+        try std.testing.expect(p.errors.items.len == 0);
+
+        const stmt = program.statements.items[0];
+        const expr_stmt = stmt.expr_stmt;
+        const function = ast.FunctionLiteral.init(&expr_stmt.expression);
+
+        try std.testing.expect(function.parameters.items.len == t.expected.len);
+
+        for (function.parameters.items, 0..) |ident, i| {
+            try std.testing.expectEqualStrings(t.expected[i], ident.value);
+        }
+    }
 }

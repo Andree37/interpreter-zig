@@ -40,6 +40,7 @@ pub const Expression = union(enum) {
     infix_expr: InfixExpression,
     bool_expr: Boolean,
     if_expr: IfExpression,
+    func_literal: FunctionLiteral,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
@@ -49,6 +50,7 @@ pub const Expression = union(enum) {
             .infix_expr => |expr| expr.token_literal(),
             .bool_expr => |expr| expr.token_literal(),
             .if_expr => |expr| expr.token_literal(),
+            .func_literal => |expr| expr.token_literal(),
         };
     }
 
@@ -60,6 +62,7 @@ pub const Expression = union(enum) {
             .infix_expr => |expr| try expr.string(writer),
             .bool_expr => |expr| try expr.string(writer),
             .if_expr => |expr| try expr.string(writer),
+            .func_literal => |expr| try expr.string(writer),
         }
     }
 
@@ -90,6 +93,9 @@ pub const Expression = union(enum) {
                     expr.alternative.?.deinit(allocator);
                     allocator.destroy(expr.alternative.?);
                 }
+            },
+            .func_literal => |fun| {
+                fun.deinit(allocator);
             },
         }
     }
@@ -362,6 +368,43 @@ pub const BlockStatement = struct {
         for (self.statements.items) |stmt| {
             try stmt.string(writer);
         }
+    }
+};
+
+pub const FunctionLiteral = struct {
+    token: token.Token,
+    parameters: std.ArrayList(Identifier),
+    body: *BlockStatement,
+
+    pub fn init(expr: *const Expression) FunctionLiteral {
+        return expr.func_literal;
+    }
+
+    pub fn deinit(self: *const FunctionLiteral, allocator: std.mem.Allocator) void {
+        self.parameters.deinit();
+        self.body.deinit(allocator);
+        allocator.destroy(self.body);
+    }
+
+    pub fn expression_node(_: *const FunctionLiteral) void {
+        return;
+    }
+
+    pub fn token_literal(self: *const FunctionLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const FunctionLiteral, writer: anytype) !void {
+        try writer.writeAll(self.token_literal());
+        try writer.writeByte('(');
+
+        for (self.parameters.items, 0..) |param, i| {
+            if (i > 0) try writer.writeAll(", ");
+            try writer.writeAll(param.value);
+        }
+
+        try writer.writeByte(')');
+        try self.body.string(writer);
     }
 };
 
