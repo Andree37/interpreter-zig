@@ -30,6 +30,7 @@ const precendences = [_]PrecendecesEntry{
     .{ .key = .minus, .value = .sum },
     .{ .key = .slash, .value = .product },
     .{ .key = .asterisk, .value = .product },
+    .{ .key = .l_paren, .value = .call },
 };
 
 fn lookup(key: token.TokenType) ?ExprOrder {
@@ -82,6 +83,7 @@ pub const Parser = struct {
         try p.register_infix(token.TokenType.not_eq, parse_infix_expression);
         try p.register_infix(token.TokenType.lt, parse_infix_expression);
         try p.register_infix(token.TokenType.gt, parse_infix_expression);
+        try p.register_infix(token.TokenType.l_paren, parse_call_expression);
 
         // read two tokens, so cur_token and peek_token are both set
         p.next_token();
@@ -263,6 +265,50 @@ pub const Parser = struct {
         };
 
         return expr;
+    }
+
+    fn parse_call_expression(self: *Parser, function: ast.Expression) ?ast.Expression {
+        const cur_token = self.cur_token;
+
+        const args = (self.parse_call_arguments() catch return null) orelse return null;
+
+        const call_function = self.allocator.create(ast.Expression) catch return null;
+        call_function.* = function;
+
+        return ast.Expression{
+            .call_expr = .{
+                .arguments = args,
+                .function = call_function,
+                .token = cur_token,
+            },
+        };
+    }
+
+    fn parse_call_arguments(self: *Parser) !?std.ArrayList(ast.Expression) {
+        var args = std.ArrayList(ast.Expression).init(self.allocator);
+
+        if (self.peek_token.type == token.TokenType.r_paren) {
+            self.next_token();
+            return args;
+        }
+
+        self.next_token();
+        const expr = self.parse_expression(ExprOrder.lowest) orelse return null;
+        try args.append(expr);
+
+        while (self.peek_token.type == token.TokenType.comma) {
+            self.next_token();
+            self.next_token();
+
+            const arg_expr = self.parse_expression(ExprOrder.lowest) orelse return null;
+            try args.append(arg_expr);
+        }
+
+        if (!self.expect_peek(token.TokenType.r_paren)) {
+            return null;
+        }
+
+        return args;
     }
 
     fn parse_prefix_expression(self: *Parser) ?ast.Expression {
@@ -891,6 +937,9 @@ test "test operator precedence parsing" {
         .{ .input = "2 / (5 + 5)", .expected = "(2 / (5 + 5))" },
         .{ .input = "-(5 + 5)", .expected = "(-(5 + 5))" },
         .{ .input = "!(true == true)", .expected = "(!(true == true))" },
+        .{ .input = "a + add(b * c) + d", .expected = "((a + add((b * c))) + d)" },
+        .{ .input = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", .expected = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
+        .{ .input = "add(a + b + c * d / f + g)", .expected = "add((((a + b) + ((c * d) / f)) + g))" },
     };
 
     for (tests) |t| {
@@ -1031,4 +1080,41 @@ test "test function parameter parsing" {
             try std.testing.expectEqualStrings(t.expected[i], ident.value);
         }
     }
+}
+
+test "test call expression parsing" {
+    const input = "add(1, 2 * 3, 4 + 5);";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program(std.testing.allocator);
+    defer program.deinit();
+
+    for (p.errors.items) |err| {
+        std.debug.print("Found error: {s}\n", .{err});
+    }
+    try std.testing.expect(p.errors.items.len == 0);
+
+    std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const expr = stmt.expr_stmt;
+    const call_expr = ast.CallExpression.init(&expr.expression);
+
+    try std.testing.expectEqualStrings("add", call_expr.function.identifier.value);
+    try std.testing.expect(call_expr.arguments.items.len == 3);
+
+    try std.testing.expectEqual(1, call_expr.arguments.items[0].integer_literal.value);
+
+    const infix_expr_1 = call_expr.arguments.items[1].infix_expr;
+    try std.testing.expectEqual(2, infix_expr_1.left.integer_literal.value);
+    try std.testing.expectEqualStrings("*", infix_expr_1.operator);
+    try std.testing.expectEqual(3, infix_expr_1.right.integer_literal.value);
+
+    const infix_expr_2 = call_expr.arguments.items[2].infix_expr;
+    try std.testing.expectEqual(4, infix_expr_2.left.integer_literal.value);
+    try std.testing.expectEqualStrings("+", infix_expr_2.operator);
+    try std.testing.expectEqual(5, infix_expr_2.right.integer_literal.value);
 }

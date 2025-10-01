@@ -41,6 +41,7 @@ pub const Expression = union(enum) {
     bool_expr: Boolean,
     if_expr: IfExpression,
     func_literal: FunctionLiteral,
+    call_expr: CallExpression,
 
     pub fn token_literal(self: *const Expression) []const u8 {
         return switch (self.*) {
@@ -51,6 +52,7 @@ pub const Expression = union(enum) {
             .bool_expr => |expr| expr.token_literal(),
             .if_expr => |expr| expr.token_literal(),
             .func_literal => |expr| expr.token_literal(),
+            .call_expr => |expr| expr.token_literal(),
         };
     }
 
@@ -63,6 +65,7 @@ pub const Expression = union(enum) {
             .bool_expr => |expr| try expr.string(writer),
             .if_expr => |expr| try expr.string(writer),
             .func_literal => |expr| try expr.string(writer),
+            .call_expr => |expr| try expr.string(writer),
         }
     }
 
@@ -96,6 +99,9 @@ pub const Expression = union(enum) {
             },
             .func_literal => |fun| {
                 fun.deinit(allocator);
+            },
+            .call_expr => |call_expr| {
+                call_expr.deinit(allocator);
             },
         }
     }
@@ -405,6 +411,47 @@ pub const FunctionLiteral = struct {
 
         try writer.writeByte(')');
         try self.body.string(writer);
+    }
+};
+
+pub const CallExpression = struct {
+    token: token.Token,
+    function: *const Expression,
+    arguments: std.ArrayList(Expression),
+
+    pub fn init(expr: *const Expression) CallExpression {
+        return expr.call_expr;
+    }
+
+    pub fn deinit(self: *const CallExpression, allocator: std.mem.Allocator) void {
+        for (self.arguments.items) |args| {
+            args.deinit(allocator);
+        }
+
+        self.arguments.deinit();
+
+        self.function.deinit(allocator);
+        allocator.destroy(self.function);
+    }
+
+    pub fn expression_node(_: *const CallExpression) void {
+        return;
+    }
+
+    pub fn token_literal(self: *const CallExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const CallExpression, writer: anytype) !void {
+        try self.function.string(writer);
+        try writer.writeByte('(');
+
+        for (self.arguments.items, 0..) |param, i| {
+            if (i > 0) try writer.writeAll(", ");
+            try param.string(writer);
+        }
+
+        try writer.writeByte(')');
     }
 };
 
