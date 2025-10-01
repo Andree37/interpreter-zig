@@ -572,8 +572,8 @@ pub const Parser = struct {
         }
     }
 
-    pub fn parse_program(self: *Parser, allocator: std.mem.Allocator) !ast.Program {
-        var program = ast.Program.init(allocator);
+    pub fn parse_program(self: *Parser) !ast.Program {
+        var program = ast.Program.init(self.allocator);
 
         while (self.cur_token.type != token.TokenType.eof) {
             const stmt = self.parse_statement();

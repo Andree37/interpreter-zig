@@ -2,6 +2,7 @@ const std = @import("std");
 
 const lexer = @import("lexer.zig");
 const token = @import("token.zig");
+const parser = @import("parser.zig");
 
 const PROMPT = ">> ";
 
@@ -39,12 +40,22 @@ pub fn start(
         if (line.len == 0) continue;
 
         var lex = lexer.Lexer.init(line);
-
-        while (true) {
-            const tok = lex.next_token();
-            if (tok.type == token.TokenType.eof) break;
-
-            try writer.writeAll(std.fmt.allocPrint(allocator, "{any} {s}\n", .{ tok.type, tok.literal }) catch return error.OutOfMemory);
+        var p = try parser.Parser.init(allocator, &lex);
+        var program = try p.parse_program();
+        if (p.errors.items.len != 0) {
+            try print_parser_errors(writer, p.errors.items, allocator);
+            continue;
         }
+
+        const program_str = try program.string();
+        const output = try std.fmt.allocPrint(allocator, "{s}\n", .{program_str});
+        try writer.writeAll(output);
+    }
+}
+
+fn print_parser_errors(writer: anytype, errors: [][]const u8, allocator: std.mem.Allocator) !void {
+    for (errors) |err| {
+        const formattedErr = try std.fmt.allocPrint(allocator, "\t{s}\n", .{err});
+        try writer.writeAll(formattedErr);
     }
 }
