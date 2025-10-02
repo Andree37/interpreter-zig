@@ -7,10 +7,8 @@ const parser = @import("parser.zig");
 const PROMPT = ">> ";
 
 pub fn start(
-    comptime ReaderType: type,
-    comptime WriterType: type,
-    reader: ReaderType,
-    writer: WriterType,
+    reader: anytype,
+    writer: anytype,
 ) !void {
     var buf_reader = std.io.bufferedReader(reader);
     const buffered = buf_reader.reader();

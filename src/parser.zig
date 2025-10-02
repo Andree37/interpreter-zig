@@ -612,7 +612,7 @@ test "test let statement" {
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
 
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         // check parser errors
@@ -645,7 +645,7 @@ test "test let bad input" {
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
 
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     // check parser errors
@@ -672,7 +672,7 @@ test "test return statements" {
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
 
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         // check parser errors
@@ -698,7 +698,7 @@ test "test identifier expression" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     try std.testing.expect(p.errors.items.len == 0);
@@ -721,7 +721,7 @@ test "test integer literal expression" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     try std.testing.expect(p.errors.items.len == 0);
@@ -760,7 +760,7 @@ test "test parsing prefix expression" {
         var lex = lexer.Lexer.init(p_test.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         try std.testing.expect(p.errors.items.len == 0);
@@ -803,7 +803,7 @@ test "test parsing boolean prefix expression" {
         var lex = lexer.Lexer.init(p_test.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         try std.testing.expect(p.errors.items.len == 0);
@@ -846,7 +846,7 @@ test "test parsing infix expressions" {
         var lex = lexer.Lexer.init(p_test.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         try std.testing.expect(p.errors.items.len == 0);
@@ -889,7 +889,7 @@ test "test parsing boolean infix expressions" {
         var lex = lexer.Lexer.init(p_test.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         try std.testing.expect(p.errors.items.len == 0);
@@ -950,7 +950,7 @@ test "test operator precedence parsing" {
         var lex = lexer.Lexer.init(t.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         for (p.errors.items) |err| {
@@ -971,7 +971,7 @@ test "test boolean literal" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     try std.testing.expect(p.errors.items.len == 0);
@@ -992,7 +992,7 @@ test "test if expression" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     try std.testing.expect(p.errors.items.len == 0);
@@ -1024,7 +1024,7 @@ test "test function literal parsing" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     for (p.errors.items) |err| {
@@ -1066,7 +1066,7 @@ test "test function parameter parsing" {
         var lex = lexer.Lexer.init(t.input);
         var p = try Parser.init(std.testing.allocator, &lex);
         defer p.deinit();
-        var program = try p.parse_program(std.testing.allocator);
+        var program = try p.parse_program();
         defer program.deinit();
 
         for (p.errors.items) |err| {
@@ -1092,7 +1092,7 @@ test "test call expression parsing" {
     var lex = lexer.Lexer.init(input);
     var p = try Parser.init(std.testing.allocator, &lex);
     defer p.deinit();
-    var program = try p.parse_program(std.testing.allocator);
+    var program = try p.parse_program();
     defer program.deinit();
 
     for (p.errors.items) |err| {

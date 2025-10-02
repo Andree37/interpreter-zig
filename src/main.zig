@@ -7,5 +7,5 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     // start repl
-    try repl.start(@TypeOf(stdin), @TypeOf(stdout), stdin, stdout);
+    try repl.start(stdin, stdout);
 }
