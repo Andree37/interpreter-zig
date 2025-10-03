@@ -2,6 +2,11 @@ const std = @import("std");
 
 const token = @import("token.zig");
 
+pub const Node = union(enum) {
+    statement: Statement,
+    expression: Expression,
+};
+
 pub const Statement = union(enum) {
     let_stmt: LetStatement,
     return_stmt: ReturnStatement,

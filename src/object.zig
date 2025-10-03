@@ -29,7 +29,7 @@ pub const Object = union(enum) {
 };
 
 pub const Integer = struct {
-    object_type: ObjectType = ObjectType.integer_obj,
+    const object_type: ObjectType = ObjectType.integer_obj;
     value: i64,
 
     pub fn inspect(self: *Integer, allocator: std.mem.Allocator) ![]const u8 {
