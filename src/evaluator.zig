@@ -6,14 +6,17 @@ const ast = @import("ast.zig");
 const object = @import("object.zig");
 
 const TRUE = object.Object{
-    .boolean_obj = object.Boolean{
+    .boolean_obj = .{
         .value = true,
     },
 };
 const FALSE = object.Object{
-    .boolean_obj = object.Boolean{
+    .boolean_obj = .{
         .value = false,
     },
+};
+const NULL = object.Object{
+    .null_obj = .{},
 };
 
 pub fn eval_program(program: *ast.Program) ?object.Object {

@@ -48,7 +48,6 @@ pub const Boolean = struct {
 
 pub const Null = struct {
     const object_type: ObjectType = ObjectType.null_obj;
-    value: bool,
 
     pub fn inspect(_: *const Null) ![]const u8 {
         return "null";
