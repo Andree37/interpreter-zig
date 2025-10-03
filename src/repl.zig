@@ -47,12 +47,12 @@ pub fn start(
         }
 
         const evaluated = evaluator.eval_program(&program);
+        var output: []const u8 = "ERROR Something in the input I cannot parse...\n";
         if (evaluated != null) {
             const evaluated_str = try evaluated.?.inspect(allocator);
-            const output = try std.fmt.allocPrint(allocator, "{s}\n", .{evaluated_str});
-
-            try writer.writeAll(output);
+            output = try std.fmt.allocPrint(allocator, "{s}\n", .{evaluated_str});
         }
+        try writer.writeAll(output);
     }
 }
 

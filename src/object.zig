@@ -38,7 +38,7 @@ pub const Integer = struct {
 };
 
 pub const Boolean = struct {
-    object_type: ObjectType = ObjectType.boolean_obj,
+    const object_type: ObjectType = ObjectType.boolean_obj;
     value: bool,
 
     pub fn inspect(self: *const Boolean, allocator: std.mem.Allocator) ![]const u8 {
@@ -47,7 +47,7 @@ pub const Boolean = struct {
 };
 
 pub const Null = struct {
-    object_type: ObjectType = ObjectType.null_obj,
+    const object_type: ObjectType = ObjectType.null_obj;
     value: bool,
 
     pub fn inspect(_: *const Null) ![]const u8 {
