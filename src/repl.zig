@@ -3,6 +3,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 const parser = @import("parser.zig");
+const evaluator = @import("evaluator.zig");
 
 const PROMPT = ">> ";
 
@@ -45,9 +46,13 @@ pub fn start(
             continue;
         }
 
-        const program_str = try program.string();
-        const output = try std.fmt.allocPrint(allocator, "{s}\n", .{program_str});
-        try writer.writeAll(output);
+        const evaluated = evaluator.eval_program(&program);
+        if (evaluated != null) {
+            const evaluated_str = try evaluated.?.inspect(allocator);
+            const output = try std.fmt.allocPrint(allocator, "{s}\n", .{evaluated_str});
+
+            try writer.writeAll(output);
+        }
     }
 }
 

@@ -19,11 +19,11 @@ pub const Object = union(enum) {
         };
     }
 
-    pub fn inspect(self: *const Object, allocator: std.mem.Allocator) []const u8 {
+    pub fn inspect(self: *const Object, allocator: std.mem.Allocator) ![]const u8 {
         return switch (self.*) {
-            .integer_obj => |obj| obj.inspect(allocator),
-            .boolean_obj => |obj| obj.inspect(allocator),
-            .null_obj => |obj| obj.inspect(),
+            .integer_obj => |obj| try obj.inspect(allocator),
+            .boolean_obj => |obj| try obj.inspect(allocator),
+            .null_obj => |obj| try obj.inspect(),
         };
     }
 };
@@ -32,7 +32,7 @@ pub const Integer = struct {
     const object_type: ObjectType = ObjectType.integer_obj;
     value: i64,
 
-    pub fn inspect(self: *Integer, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn inspect(self: *const Integer, allocator: std.mem.Allocator) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{d}", .{self.value}) catch return "";
     }
 };
@@ -41,8 +41,8 @@ pub const Boolean = struct {
     object_type: ObjectType = ObjectType.boolean_obj,
     value: bool,
 
-    pub fn inspect(self: *Boolean, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{t}", .{self.value}) catch return "";
+    pub fn inspect(self: *const Boolean, allocator: std.mem.Allocator) ![]const u8 {
+        return std.fmt.allocPrint(allocator, "{}", .{self.value}) catch return "";
     }
 };
 
@@ -50,7 +50,7 @@ pub const Null = struct {
     object_type: ObjectType = ObjectType.null_obj,
     value: bool,
 
-    pub fn inspect(_: *Null) []const u8 {
+    pub fn inspect(_: *const Null) ![]const u8 {
         return "null";
     }
 };
