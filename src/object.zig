@@ -13,9 +13,9 @@ pub const Object = union(enum) {
 
     pub fn object_type(self: *const Object) ObjectType {
         return switch (self.*) {
-            .integer_obj => |obj| obj.object_type,
-            .boolean_obj => |obj| obj.object_type,
-            .null_obj => |obj| obj.object_type,
+            .integer_obj => ObjectType.integer_obj,
+            .boolean_obj => ObjectType.boolean_obj,
+            .null_obj => ObjectType.null_obj,
         };
     }
 
@@ -29,7 +29,6 @@ pub const Object = union(enum) {
 };
 
 pub const Integer = struct {
-    const object_type: ObjectType = ObjectType.integer_obj;
     value: i64,
 
     pub fn inspect(self: *const Integer, allocator: std.mem.Allocator) ![]const u8 {
@@ -38,7 +37,6 @@ pub const Integer = struct {
 };
 
 pub const Boolean = struct {
-    const object_type: ObjectType = ObjectType.boolean_obj;
     value: bool,
 
     pub fn inspect(self: *const Boolean, allocator: std.mem.Allocator) ![]const u8 {
@@ -47,8 +45,6 @@ pub const Boolean = struct {
 };
 
 pub const Null = struct {
-    const object_type: ObjectType = ObjectType.null_obj;
-
     pub fn inspect(_: *const Null) ![]const u8 {
         return "null";
     }
