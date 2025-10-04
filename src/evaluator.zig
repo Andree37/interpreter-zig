@@ -79,6 +79,29 @@ fn eval_prefix_expression(operator: []const u8, right: object.Object) ?object.Ob
     return NULL;
 }
 
+fn eval_block_statement_expr(block_expr: ast.BlockStatement) ?object.Object {
+    return eval_statements(block_expr.statements);
+}
+
+fn eval_if_expression(if_expr: ast.IfExpression) ?object.Object {
+    const condition = eval_expr(if_expr.condition.*);
+    if (is_truthy(condition.?)) {
+        return eval_block_statement_expr(if_expr.consequence.*);
+    } else if (if_expr.alternative != null) {
+        return eval_block_statement_expr(if_expr.alternative.?.*);
+    }
+
+    return NULL;
+}
+
+fn is_truthy(obj: object.Object) bool {
+    return switch (obj) {
+        .boolean_obj => |boolean| return boolean.value,
+        .null_obj => return false,
+        .integer_obj => return true,
+    };
+}
+
 fn eval_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
     // left int, right int
     if (left.object_type() == object.ObjectType.integer_obj and right.object_type() == object.ObjectType.integer_obj) {
@@ -142,7 +165,7 @@ fn eval_expr(expr: ast.Expression) ?object.Object {
         .call_expr => return null,
         .func_literal => return null,
         .identifier => return null,
-        .if_expr => return null,
+        .if_expr => |if_expr| return eval_if_expression(if_expr),
         .infix_expr => |infix_expr| {
             const left = eval_expr(infix_expr.left.*);
             const right = eval_expr(infix_expr.right.*);
@@ -172,6 +195,10 @@ fn test_integer_object(obj: object.Object, expected: i64) bool {
 
 fn test_bool_object(obj: object.Object, expected: bool) bool {
     return obj.boolean_obj.value == expected;
+}
+
+fn test_null_object(obj: object.Object) bool {
+    return obj == .null_obj;
 }
 
 test "test eval integer expressions" {
@@ -250,5 +277,33 @@ test "test bang operator" {
     for (tests) |t| {
         const evaluated = try test_eval(t.input);
         try std.testing.expect(test_bool_object(evaluated.?, t.expected));
+    }
+}
+
+test "test if else expressions" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: object.Object,
+    }{
+        .{ .input = "if (true) { 10 }", .expected = object.Object{ .integer_obj = .{ .value = 10 } } },
+        .{ .input = "if (false) { 10 }", .expected = object.Object{ .null_obj = .{} } },
+        .{ .input = "if (1) { 10 }", .expected = object.Object{ .integer_obj = .{ .value = 10 } } },
+        .{ .input = "if (1 < 2) { 10 }", .expected = object.Object{ .integer_obj = .{ .value = 10 } } },
+        .{ .input = "if (1 > 2) { 10 }", .expected = object.Object{ .null_obj = .{} } },
+        .{ .input = "if (1 > 2) { 10 } else { 20 }", .expected = object.Object{ .integer_obj = .{ .value = 20 } } },
+        .{ .input = "if (1 < 2) { 10 } else { 20 }", .expected = object.Object{ .integer_obj = .{ .value = 10 } } },
+    };
+
+    for (tests) |t| {
+        const evaluated = try test_eval(t.input);
+        if (evaluated != null) {
+            switch (evaluated.?) {
+                .integer_obj => try std.testing.expect(test_integer_object(evaluated.?, t.expected.integer_obj.value)),
+                .boolean_obj => unreachable,
+                .null_obj => try std.testing.expect(test_null_object(evaluated.?)),
+            }
+        } else {
+            unreachable;
+        }
     }
 }

@@ -11,7 +11,6 @@ pub const Statement = union(enum) {
     let_stmt: LetStatement,
     return_stmt: ReturnStatement,
     expr_stmt: ExpressionStatement,
-    // add return, expression, etc. later
 
     pub fn token_literal(self: *const Statement) []const u8 {
         return switch (self.*) {
