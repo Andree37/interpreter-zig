@@ -396,7 +396,6 @@ pub const Parser = struct {
                 return null;
             }
 
-            std.debug.print("I AM A POTATO", .{});
             alternative = self.parse_block_statement();
         }
 

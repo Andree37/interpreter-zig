@@ -5,6 +5,7 @@ pub const ObjectType = enum {
     boolean_obj,
     null_obj,
     return_obj,
+    error_obj,
 };
 
 pub const Object = union(enum) {
@@ -12,6 +13,7 @@ pub const Object = union(enum) {
     boolean_obj: Boolean,
     null_obj: Null,
     return_obj: Return,
+    error_obj: Error,
 
     pub fn object_type(self: *const Object) ObjectType {
         return switch (self.*) {
@@ -19,6 +21,7 @@ pub const Object = union(enum) {
             .boolean_obj => ObjectType.boolean_obj,
             .null_obj => ObjectType.null_obj,
             .return_obj => ObjectType.return_obj,
+            .error_obj => ObjectType.error_obj,
         };
     }
 
@@ -28,7 +31,14 @@ pub const Object = union(enum) {
             .boolean_obj => |obj| try obj.inspect(allocator),
             .null_obj => |obj| try obj.inspect(),
             .return_obj => |obj| try obj.inspect(allocator),
+            .error_obj => |obj| try obj.inspect(allocator),
         };
+    }
+
+    pub fn new_error(allocator: std.mem.Allocator, comptime format: []const u8, args: anytype) Object {
+        const msg = std.fmt.allocPrint(allocator, format, args) catch return Object{ .null_obj = .{} };
+        const err = Error{ .message = msg };
+        return Object{ .error_obj = err };
     }
 };
 
@@ -63,5 +73,17 @@ pub const Return = struct {
 
     pub fn deinit(self: *const Return, allocator: std.mem.Allocator) void {
         allocator.destroy(self.value);
+    }
+};
+
+pub const Error = struct {
+    message: []const u8,
+
+    pub fn inspect(self: *const Error, allocator: std.mem.Allocator) ![]const u8 {
+        return std.fmt.allocPrint(allocator, "ERROR: {}", .{self.message}) catch return "";
+    }
+
+    pub fn deinit(self: *const Error, allocator: std.mem.Allocator) void {
+        allocator.free(self.message);
     }
 };
