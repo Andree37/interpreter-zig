@@ -4,18 +4,21 @@ pub const ObjectType = enum {
     integer_obj,
     boolean_obj,
     null_obj,
+    return_obj,
 };
 
 pub const Object = union(enum) {
     integer_obj: Integer,
     boolean_obj: Boolean,
     null_obj: Null,
+    return_obj: Return,
 
     pub fn object_type(self: *const Object) ObjectType {
         return switch (self.*) {
             .integer_obj => ObjectType.integer_obj,
             .boolean_obj => ObjectType.boolean_obj,
             .null_obj => ObjectType.null_obj,
+            .return_obj => ObjectType.return_obj,
         };
     }
 
@@ -24,6 +27,7 @@ pub const Object = union(enum) {
             .integer_obj => |obj| try obj.inspect(allocator),
             .boolean_obj => |obj| try obj.inspect(allocator),
             .null_obj => |obj| try obj.inspect(),
+            .return_obj => |obj| try obj.inspect(allocator),
         };
     }
 };
@@ -47,5 +51,17 @@ pub const Boolean = struct {
 pub const Null = struct {
     pub fn inspect(_: *const Null) ![]const u8 {
         return "null";
+    }
+};
+
+pub const Return = struct {
+    value: *const Object,
+
+    pub fn inspect(self: *const Return, allocator: std.mem.Allocator) ![]const u8 {
+        return self.value.inspect(allocator);
+    }
+
+    pub fn deinit(self: *const Return, allocator: std.mem.Allocator) void {
+        allocator.destroy(self.value);
     }
 };
