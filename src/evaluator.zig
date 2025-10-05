@@ -23,15 +23,15 @@ fn is_error(obj: object.Object) bool {
     return obj == .error_obj;
 }
 
-pub fn eval_program(program: *ast.Program, allocator: std.mem.Allocator) ?object.Object {
-    return eval_statements(allocator, program.statements);
+pub fn eval_program(program: *ast.Program, allocator: std.mem.Allocator, env: *object.Environment) ?object.Object {
+    return eval_statements(env, allocator, program.statements);
 }
 
-fn eval_statements(allocator: std.mem.Allocator, stmts: std.ArrayList(ast.Statement)) ?object.Object {
+fn eval_statements(env: *object.Environment, allocator: std.mem.Allocator, stmts: std.ArrayList(ast.Statement)) ?object.Object {
     var result: ?object.Object = null;
 
     for (stmts.items) |stmt| {
-        result = eval_stmt(allocator, stmt);
+        result = eval_stmt(env, allocator, stmt);
         if (result == null) {
             return null;
         }
@@ -47,12 +47,19 @@ fn eval_statements(allocator: std.mem.Allocator, stmts: std.ArrayList(ast.Statem
     return result;
 }
 
-fn eval_stmt(allocator: std.mem.Allocator, stmt: ast.Statement) ?object.Object {
+fn eval_stmt(env: *object.Environment, allocator: std.mem.Allocator, stmt: ast.Statement) ?object.Object {
     switch (stmt) {
-        .expr_stmt => |expr_stmt| return eval_expr(allocator, expr_stmt.expression),
-        .let_stmt => |_| return null,
+        .expr_stmt => |expr_stmt| return eval_expr(env, allocator, expr_stmt.expression),
+        .let_stmt => |let_stmt| {
+            const obj = eval_expr(env, allocator, let_stmt.value);
+            if (obj != null) {
+                const key = allocator.dupe(u8, let_stmt.name.value) catch return null; //dupe as we are freeing elsewhere
+                env.store.put(key, obj.?) catch return null;
+            }
+            return obj;
+        },
         .return_stmt => |return_stmt| {
-            const val = eval_expr(allocator, return_stmt.return_value);
+            const val = eval_expr(env, allocator, return_stmt.return_value);
             if (val == null) {
                 return null;
             }
@@ -61,6 +68,17 @@ fn eval_stmt(allocator: std.mem.Allocator, stmt: ast.Statement) ?object.Object {
             return object.Object{ .return_obj = .{ .value = obj } };
         },
     }
+}
+
+fn eval_identifier(env: *object.Environment, allocator: std.mem.Allocator, ident: ast.Identifier) ?object.Object {
+    const key = allocator.dupe(u8, ident.value) catch return null;
+    defer allocator.free(key);
+
+    if (!env.store.contains(key)) {
+        return object.Object.new_error(allocator, "identifier not found: {s}", .{ident.value});
+    }
+
+    return env.store.get(key);
 }
 
 fn native_bool_to_boolean_object(input: bool) object.Object {
@@ -95,16 +113,16 @@ fn eval_prefix_expression(allocator: std.mem.Allocator, operator: []const u8, ri
     return object.Object.new_error(allocator, "unknown operator: {s}{any}", .{ operator, @tagName(right.object_type()) });
 }
 
-fn eval_block_statement_expr(allocator: std.mem.Allocator, block_expr: ast.BlockStatement) ?object.Object {
-    return eval_statements(allocator, block_expr.statements);
+fn eval_block_statement_expr(env: *object.Environment, allocator: std.mem.Allocator, block_expr: ast.BlockStatement) ?object.Object {
+    return eval_statements(env, allocator, block_expr.statements);
 }
 
-fn eval_if_expression(allocator: std.mem.Allocator, if_expr: ast.IfExpression) ?object.Object {
-    const condition = eval_expr(allocator, if_expr.condition.*);
+fn eval_if_expression(env: *object.Environment, allocator: std.mem.Allocator, if_expr: ast.IfExpression) ?object.Object {
+    const condition = eval_expr(env, allocator, if_expr.condition.*);
     if (is_truthy(condition.?)) {
-        return eval_block_statement_expr(allocator, if_expr.consequence.*);
+        return eval_block_statement_expr(env, allocator, if_expr.consequence.*);
     } else if (if_expr.alternative != null) {
-        return eval_block_statement_expr(allocator, if_expr.alternative.?.*);
+        return eval_block_statement_expr(env, allocator, if_expr.alternative.?.*);
     }
 
     return NULL;
@@ -174,7 +192,7 @@ fn eval_integer_infix_expression(allocator: std.mem.Allocator, operator: []const
     return object.Object.new_error(allocator, "unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
 }
 
-fn eval_expr(allocator: std.mem.Allocator, expr: ast.Expression) ?object.Object {
+fn eval_expr(env: *object.Environment, allocator: std.mem.Allocator, expr: ast.Expression) ?object.Object {
     switch (expr) {
         .integer_literal => |int| return object.Object{
             .integer_obj = object.Integer{
@@ -184,21 +202,21 @@ fn eval_expr(allocator: std.mem.Allocator, expr: ast.Expression) ?object.Object 
         .bool_expr => |boolean| return if (boolean.value) TRUE else FALSE,
         .call_expr => return null,
         .func_literal => return null,
-        .identifier => return null,
-        .if_expr => |if_expr| return eval_if_expression(allocator, if_expr),
+        .identifier => |ident| return eval_identifier(env, allocator, ident),
+        .if_expr => |if_expr| return eval_if_expression(env, allocator, if_expr),
         .infix_expr => |infix_expr| {
-            const left = eval_expr(allocator, infix_expr.left.*);
+            const left = eval_expr(env, allocator, infix_expr.left.*);
             if (is_error(left.?)) {
                 return left;
             }
-            const right = eval_expr(allocator, infix_expr.right.*);
+            const right = eval_expr(env, allocator, infix_expr.right.*);
             if (is_error(right.?)) {
                 return right;
             }
             return eval_infix_expression(allocator, infix_expr.operator, left.?, right.?);
         },
         .prefix_expr => |prefix_expr| {
-            const right = eval_expr(allocator, prefix_expr.right.*);
+            const right = eval_expr(env, allocator, prefix_expr.right.*);
             if (is_error(right.?)) {
                 return right;
             }
@@ -215,7 +233,10 @@ fn test_eval(input: []const u8) !?object.Object {
     var program = try p.parse_program();
     defer program.deinit();
 
-    return eval_program(&program, std.testing.allocator);
+    var env = object.Environment.init(std.testing.allocator);
+    defer env.deinit();
+
+    return eval_program(&program, std.testing.allocator, &env);
 }
 
 fn test_integer_object(obj: object.Object, expected: i64) bool {
@@ -370,6 +391,7 @@ test "test error handling" {
         .{ .input = "5; true + false; 5;", .expected = "unknown operator: boolean_obj + boolean_obj" },
         .{ .input = "if (10 > 1) { true + false; }", .expected = "unknown operator: boolean_obj + boolean_obj" },
         .{ .input = "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }", .expected = "unknown operator: boolean_obj + boolean_obj" },
+        .{ .input = "foobar", .expected = "identifier not found: foobar" },
     };
 
     for (tests) |t| {
@@ -378,5 +400,23 @@ test "test error handling" {
 
         std.debug.print("testing input: {s} expected: {s} and got {any}\n", .{ t.input, t.expected, evaluated });
         try std.testing.expectEqualStrings(t.expected, evaluated.?.error_obj.message);
+    }
+}
+
+test "test let statements" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: i64,
+    }{
+        .{ .input = "let a = 5; a;", .expected = 5 },
+        .{ .input = "let a = 5 * 5; a;", .expected = 25 },
+        .{ .input = "let a = 5; let b = a; b;", .expected = 5 },
+        .{ .input = "let a = 5; let b = a; let c = a + b + 5; c;", .expected = 15 },
+    };
+
+    for (tests) |t| {
+        const evaluated = try test_eval(t.input);
+
+        try std.testing.expect(test_integer_object(evaluated.?, t.expected));
     }
 }

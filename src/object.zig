@@ -30,7 +30,7 @@ pub const Object = union(enum) {
             .integer_obj => |obj| try obj.inspect(allocator),
             .boolean_obj => |obj| try obj.inspect(allocator),
             .null_obj => |obj| try obj.inspect(),
-            .return_obj => |obj| try obj.inspect(allocator),
+            .return_obj => |obj| obj.inspect(allocator),
             .error_obj => |obj| try obj.inspect(allocator),
         };
     }
@@ -67,8 +67,8 @@ pub const Null = struct {
 pub const Return = struct {
     value: *const Object,
 
-    pub fn inspect(self: *const Return, allocator: std.mem.Allocator) ![]const u8 {
-        return self.value.inspect(allocator);
+    pub fn inspect(self: *const Return, allocator: std.mem.Allocator) []const u8 {
+        return self.value.inspect(allocator) catch return "";
     }
 
     pub fn deinit(self: *const Return, allocator: std.mem.Allocator) void {
@@ -80,10 +80,30 @@ pub const Error = struct {
     message: []const u8,
 
     pub fn inspect(self: *const Error, allocator: std.mem.Allocator) ![]const u8 {
-        return std.fmt.allocPrint(allocator, "ERROR: {}", .{self.message}) catch return "";
+        return std.fmt.allocPrint(allocator, "ERROR: {s}", .{self.message}) catch return "";
     }
 
     pub fn deinit(self: *const Error, allocator: std.mem.Allocator) void {
         allocator.free(self.message);
+    }
+};
+
+// NOT OBJECTS
+
+pub const Environment = struct {
+    store: std.StringHashMap(Object),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) Environment {
+        const map = std.StringHashMap(Object).init(allocator);
+        return .{ .store = map, .allocator = allocator };
+    }
+
+    pub fn deinit(self: *Environment) void {
+        var it = self.store.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        self.store.deinit();
     }
 };

@@ -7,11 +7,21 @@ zig build run
 
 and then we can type some code, for example:
 ```
+╰─λ zig build run
 >> let a = 5;
->> let b = 10;
->> let c = a + b * 2;
->> c;
-25
+5
+>> let b = a > 3;
+true
+>> let c = a * 99;
+495
+>> if (b) { 10 } else { 1 };
+10
+>> let d = if (c > a) { 99 } else { 100 } ;
+99
+>> d
+99
+>> d * c * a;
+245025
 ```
 
 # Run the Tests

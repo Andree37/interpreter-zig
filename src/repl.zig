@@ -4,6 +4,7 @@ const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 const parser = @import("parser.zig");
 const evaluator = @import("evaluator.zig");
+const object = @import("object.zig");
 
 const PROMPT = ">> ";
 
@@ -15,6 +16,9 @@ pub fn start(
     const buffered = buf_reader.reader();
 
     const allocator = std.heap.page_allocator;
+
+    var env = object.Environment.init(allocator);
+    defer env.deinit();
 
     while (true) {
         try writer.writeAll(PROMPT);
@@ -46,7 +50,7 @@ pub fn start(
             continue;
         }
 
-        const evaluated = evaluator.eval_program(&program);
+        var evaluated = evaluator.eval_program(&program, allocator, &env);
         var output: []const u8 = "ERROR Something in the input I cannot parse...\n";
         if (evaluated != null) {
             const evaluated_str = try evaluated.?.inspect(allocator);
