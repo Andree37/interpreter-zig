@@ -23,21 +23,21 @@ fn is_error(obj: object.Object) bool {
     return obj == .error_obj;
 }
 
-pub fn eval_program(program: *ast.Program, allocator: std.mem.Allocator, env: *object.Environment) ?object.Object {
-    return eval_statements(env, allocator, program.statements);
+pub fn eval_program(program: *ast.Program, env: *object.Environment) ?object.Object {
+    return eval_statements(env, program.statements);
 }
 
-fn eval_statements(env: *object.Environment, allocator: std.mem.Allocator, stmts: std.ArrayList(ast.Statement)) ?object.Object {
+fn eval_statements(env: *object.Environment, stmts: std.ArrayList(ast.Statement)) ?object.Object {
     var result: ?object.Object = null;
 
     for (stmts.items) |stmt| {
-        result = eval_stmt(env, allocator, stmt);
+        result = eval_stmt(env, stmt);
         if (result == null) {
             return null;
         }
 
         if (result.? == .return_obj) {
-            defer result.?.return_obj.deinit(allocator);
+            defer result.?.return_obj.deinit(object.global_allocator.?);
             return result.?.return_obj.value.*;
         } else if (result.? == .error_obj) {
             return result;
@@ -47,39 +47,39 @@ fn eval_statements(env: *object.Environment, allocator: std.mem.Allocator, stmts
     return result;
 }
 
-fn eval_stmt(env: *object.Environment, allocator: std.mem.Allocator, stmt: ast.Statement) ?object.Object {
+fn eval_stmt(env: *object.Environment, stmt: ast.Statement) ?object.Object {
     switch (stmt) {
-        .expr_stmt => |expr_stmt| return eval_expr(env, allocator, expr_stmt.expression),
+        .expr_stmt => |expr_stmt| return eval_expr(env, expr_stmt.expression),
         .let_stmt => |let_stmt| {
-            const obj = eval_expr(env, allocator, let_stmt.value);
+            const obj = eval_expr(env, let_stmt.value);
             if (obj != null) {
                 if (is_error(obj.?)) {
                     return obj;
                 }
-                const key = allocator.dupe(u8, let_stmt.name.value) catch return null; //dupe as we are freeing elsewhere
+                const key = object.global_allocator.?.dupe(u8, let_stmt.name.value) catch return null; //dupe as we are freeing elsewhere
                 env.set(key, obj.?) catch return null;
             }
             return obj;
         },
         .return_stmt => |return_stmt| {
-            const val = eval_expr(env, allocator, return_stmt.return_value);
+            const val = eval_expr(env, return_stmt.return_value);
             if (val == null) {
                 return null;
             }
-            const obj = allocator.create(object.Object) catch return null;
+            const obj = object.global_allocator.?.create(object.Object) catch return null;
             obj.* = val.?;
             return object.Object{ .return_obj = .{ .value = obj } };
         },
     }
 }
 
-fn eval_identifier(env: *object.Environment, allocator: std.mem.Allocator, ident: ast.Identifier) ?object.Object {
-    const key = allocator.dupe(u8, ident.value) catch return null;
-    defer allocator.free(key);
+fn eval_identifier(env: *object.Environment, ident: ast.Identifier) ?object.Object {
+    const key = object.global_allocator.?.dupe(u8, ident.value) catch return null;
+    defer object.global_allocator.?.free(key);
 
     const val = env.get(key);
     if (val == null) {
-        return object.Object.new_error(allocator, "identifier not found: {s}", .{ident.value});
+        return object.Object.new_error("identifier not found: {s}", .{ident.value});
     }
 
     return val;
@@ -96,32 +96,32 @@ fn eval_bang_operator_expression(right: object.Object) object.Object {
     }
 }
 
-fn eval_minus_operator_expression(allocator: std.mem.Allocator, right: object.Object) object.Object {
+fn eval_minus_operator_expression(right: object.Object) object.Object {
     switch (right) {
         .integer_obj => |int_obj| return object.Object{
             .integer_obj = .{
                 .value = -int_obj.value,
             },
         },
-        .boolean_obj, .error_obj, .null_obj, .return_obj, .function_obj => return object.Object.new_error(allocator, "unknown operator: -{s}", .{@tagName(right.object_type())}),
+        .boolean_obj, .error_obj, .null_obj, .return_obj, .function_obj => return object.Object.new_error("unknown operator: -{s}", .{@tagName(right.object_type())}),
     }
 }
 
-fn eval_prefix_expression(allocator: std.mem.Allocator, operator: []const u8, right: object.Object) ?object.Object {
+fn eval_prefix_expression(operator: []const u8, right: object.Object) ?object.Object {
     if (std.mem.eql(u8, operator, "!")) {
         return eval_bang_operator_expression(right);
     } else if (std.mem.eql(u8, operator, "-")) {
-        return eval_minus_operator_expression(allocator, right);
+        return eval_minus_operator_expression(right);
     }
 
-    return object.Object.new_error(allocator, "unknown operator: {s}{any}", .{ operator, @tagName(right.object_type()) });
+    return object.Object.new_error("unknown operator: {s}{any}", .{ operator, @tagName(right.object_type()) });
 }
 
-fn eval_block_statement_expr(env: *object.Environment, allocator: std.mem.Allocator, block_expr: ast.BlockStatement) ?object.Object {
+fn eval_block_statement_expr(env: *object.Environment, block_expr: ast.BlockStatement) ?object.Object {
     var result: ?object.Object = null;
 
     for (block_expr.statements.items) |stmt| {
-        result = eval_stmt(env, allocator, stmt);
+        result = eval_stmt(env, stmt);
         if (result == null) {
             return null;
         }
@@ -136,12 +136,12 @@ fn eval_block_statement_expr(env: *object.Environment, allocator: std.mem.Alloca
     return result;
 }
 
-fn eval_if_expression(env: *object.Environment, allocator: std.mem.Allocator, if_expr: ast.IfExpression) ?object.Object {
-    const condition = eval_expr(env, allocator, if_expr.condition.*);
+fn eval_if_expression(env: *object.Environment, if_expr: ast.IfExpression) ?object.Object {
+    const condition = eval_expr(env, if_expr.condition.*);
     if (is_truthy(condition.?)) {
-        return eval_block_statement_expr(env, allocator, if_expr.consequence.*);
+        return eval_block_statement_expr(env, if_expr.consequence.*);
     } else if (if_expr.alternative != null) {
-        return eval_block_statement_expr(env, allocator, if_expr.alternative.?.*);
+        return eval_block_statement_expr(env, if_expr.alternative.?.*);
     }
 
     return NULL;
@@ -155,25 +155,25 @@ fn is_truthy(obj: object.Object) bool {
     };
 }
 
-fn eval_infix_expression(allocator: std.mem.Allocator, operator: []const u8, left: object.Object, right: object.Object) object.Object {
+fn eval_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
     // left int, right int
     if (left.object_type() == object.ObjectType.integer_obj and right.object_type() == object.ObjectType.integer_obj) {
-        return eval_integer_infix_expression(allocator, operator, left, right);
+        return eval_integer_infix_expression(operator, left, right);
     }
 
     // left bool, right bool
     if (left.object_type() == object.ObjectType.boolean_obj and right.object_type() == object.ObjectType.boolean_obj) {
-        return eval_boolean_infix_expression(allocator, operator, left, right);
+        return eval_boolean_infix_expression(operator, left, right);
     }
 
     if (left.object_type() != right.object_type()) {
-        return object.Object.new_error(allocator, "type mismatch: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
+        return object.Object.new_error("type mismatch: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
     }
 
-    return object.Object.new_error(allocator, "unknown operator: {s}{s}", .{ operator, @tagName(right.object_type()) });
+    return object.Object.new_error("unknown operator: {s}{s}", .{ operator, @tagName(right.object_type()) });
 }
 
-fn eval_boolean_infix_expression(allocator: std.mem.Allocator, operator: []const u8, left: object.Object, right: object.Object) object.Object {
+fn eval_boolean_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
     const left_val = left.boolean_obj.value;
     const right_val = right.boolean_obj.value;
 
@@ -183,10 +183,10 @@ fn eval_boolean_infix_expression(allocator: std.mem.Allocator, operator: []const
         return object.Object{ .boolean_obj = .{ .value = left_val != right_val } };
     }
 
-    return object.Object.new_error(allocator, "unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
+    return object.Object.new_error("unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
 }
 
-fn eval_integer_infix_expression(allocator: std.mem.Allocator, operator: []const u8, left: object.Object, right: object.Object) object.Object {
+fn eval_integer_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
     const left_val = left.integer_obj.value;
     const right_val = right.integer_obj.value;
 
@@ -208,14 +208,14 @@ fn eval_integer_infix_expression(allocator: std.mem.Allocator, operator: []const
         return native_bool_to_boolean_object(left_val != right_val);
     }
 
-    return object.Object.new_error(allocator, "unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
+    return object.Object.new_error("unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
 }
 
-fn eval_expressions(env: *object.Environment, allocator: std.mem.Allocator, exprs: std.ArrayList(ast.Expression)) !std.ArrayList(object.Object) {
-    var results = std.ArrayList(object.Object).init(allocator);
+fn eval_expressions(env: *object.Environment, exprs: std.ArrayList(ast.Expression)) !std.ArrayList(object.Object) {
+    var results = std.ArrayList(object.Object).init(object.global_allocator.?);
 
     for (exprs.items) |exp| {
-        const evaluated = eval_expr(env, allocator, exp);
+        const evaluated = eval_expr(env, exp);
         if (is_error(evaluated.?)) {
             results.clearAndFree();
             try results.append(evaluated.?);
@@ -226,38 +226,56 @@ fn eval_expressions(env: *object.Environment, allocator: std.mem.Allocator, expr
     return results;
 }
 
-fn apply_function(allocator: std.mem.Allocator, fun: object.Object, args: std.ArrayList(object.Object)) !object.Object {
+fn apply_function(fun: object.Object, args: std.ArrayList(object.Object)) !object.Object {
     const function = fun.function_obj;
 
-    const extendedEnv = try extend_function_env(allocator, function, args);
-    defer extendedEnv.deinit_enclosed();
+    const extendedEnv = try extend_function_env(function, args);
 
-    const evaluated = eval_block_statement_expr(extendedEnv, allocator, function.body.*);
+    const evaluated = eval_block_statement_expr(extendedEnv, function.body.*);
 
     if (evaluated == null) {
+        extendedEnv.deinit_enclosed();
         return NULL;
     }
 
+    const should_keep_env = evaluated.? == .function_obj and evaluated.?.function_obj.env == extendedEnv;
+
     if (evaluated.? == .return_obj) {
-        defer evaluated.?.return_obj.deinit(allocator);
-        return evaluated.?.return_obj.value.*;
+        defer evaluated.?.return_obj.deinit(object.global_allocator.?);
+        const return_value = evaluated.?.return_obj.value.*;
+
+        const return_keeps_env = return_value == .function_obj and return_value.function_obj.env == extendedEnv;
+
+        if (return_keeps_env) {
+            extendedEnv.mark_for_tracking();
+        } else {
+            extendedEnv.deinit_enclosed();
+        }
+
+        return return_value;
+    }
+
+    if (should_keep_env) {
+        extendedEnv.mark_for_tracking();
+    } else {
+        extendedEnv.deinit_enclosed();
     }
 
     return evaluated.?;
 }
 
-fn extend_function_env(allocator: std.mem.Allocator, fun: object.Function, args: std.ArrayList(object.Object)) !*object.Environment {
-    const env = try object.Environment.init_enclosed(allocator, fun.env);
+fn extend_function_env(fun: object.Function, args: std.ArrayList(object.Object)) !*object.Environment {
+    const env = try object.Environment.init_enclosed(object.global_allocator.?, fun.env);
 
     for (fun.parameters.items, 0..) |param, i| {
-        const key = try allocator.dupe(u8, param.value);
+        const key = try object.global_allocator.?.dupe(u8, param.value);
         try env.set(key, args.items[i]);
     }
 
     return env;
 }
 
-fn eval_expr(env: *object.Environment, allocator: std.mem.Allocator, expr: ast.Expression) ?object.Object {
+fn eval_expr(env: *object.Environment, expr: ast.Expression) ?object.Object {
     switch (expr) {
         .integer_literal => |int| return object.Object{
             .integer_obj = object.Integer{
@@ -266,17 +284,17 @@ fn eval_expr(env: *object.Environment, allocator: std.mem.Allocator, expr: ast.E
         },
         .bool_expr => |boolean| return if (boolean.value) TRUE else FALSE,
         .call_expr => |call_expr| {
-            const fun = eval_expr(env, allocator, call_expr.function.*);
+            const fun = eval_expr(env, call_expr.function.*);
             if (is_error(fun.?)) {
                 return fun;
             }
 
-            const args = eval_expressions(env, allocator, call_expr.arguments) catch return object.Object.new_error(allocator, "woop something went wrong...", .{});
+            const args = eval_expressions(env, call_expr.arguments) catch return object.Object.new_error("woop something went wrong...", .{});
             defer args.deinit();
             if (args.items.len == 1 and is_error(args.items[0])) {
                 return args.items[0];
             }
-            return apply_function(allocator, fun.?, args) catch return object.Object.new_error(allocator, "woop something went wrong...", .{});
+            return apply_function(fun.?, args) catch return object.Object.new_error("woop something went wrong...", .{});
         },
         .func_literal => |func_literal| {
             const params = func_literal.parameters;
@@ -284,25 +302,25 @@ fn eval_expr(env: *object.Environment, allocator: std.mem.Allocator, expr: ast.E
 
             return object.Object{ .function_obj = .{ .body = body, .parameters = params, .env = env } };
         },
-        .identifier => |ident| return eval_identifier(env, allocator, ident),
-        .if_expr => |if_expr| return eval_if_expression(env, allocator, if_expr),
+        .identifier => |ident| return eval_identifier(env, ident),
+        .if_expr => |if_expr| return eval_if_expression(env, if_expr),
         .infix_expr => |infix_expr| {
-            const left = eval_expr(env, allocator, infix_expr.left.*);
+            const left = eval_expr(env, infix_expr.left.*);
             if (is_error(left.?)) {
                 return left;
             }
-            const right = eval_expr(env, allocator, infix_expr.right.*);
+            const right = eval_expr(env, infix_expr.right.*);
             if (is_error(right.?)) {
                 return right;
             }
-            return eval_infix_expression(allocator, infix_expr.operator, left.?, right.?);
+            return eval_infix_expression(infix_expr.operator, left.?, right.?);
         },
         .prefix_expr => |prefix_expr| {
-            const right = eval_expr(env, allocator, prefix_expr.right.*);
+            const right = eval_expr(env, prefix_expr.right.*);
             if (is_error(right.?)) {
                 return right;
             }
-            return eval_prefix_expression(allocator, prefix_expr.operator, right.?);
+            return eval_prefix_expression(prefix_expr.operator, right.?);
         },
     }
 }
@@ -315,10 +333,13 @@ fn test_eval(input: []const u8) !?object.Object {
     var program = try p.parse_program();
     defer program.deinit();
 
+    object.init_environment_tracking(std.testing.allocator);
+    defer object.deinit_environment_tracking();
+
     var env = try object.Environment.init(std.testing.allocator);
     defer env.deinit();
 
-    return eval_program(&program, std.testing.allocator, env);
+    return eval_program(&program, env);
 }
 
 fn test_integer_object(obj: object.Object, expected: i64) bool {
@@ -521,7 +542,7 @@ test "test function object" {
     var env = try object.Environment.init(std.testing.allocator);
     defer env.deinit();
 
-    const evaluated = eval_program(&program, std.testing.allocator, env);
+    const evaluated = eval_program(&program, env);
 
     const fun = evaluated.?.function_obj;
 
@@ -546,6 +567,7 @@ test "test function application" {
         .{ .input = "let add = fn(x, y) { x + y; }; add(5, 5);", .expected = 10 },
         .{ .input = "let add = fn(x, y) { x + y; }; add(5 + 5, add (5, 5));", .expected = 20 },
         .{ .input = "fn(x) { x; }(5)", .expected = 5 },
+        .{ .input = "let newAdder = fn(x) { fn (y) { x + y }; }; let addTwo = newAdder(2); addTwo(2);", .expected = 4 },
     };
 
     for (tests) |t| {

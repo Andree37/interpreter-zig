@@ -2,6 +2,31 @@ const std = @import("std");
 
 const ast = @import("ast.zig");
 
+var global_environments: ?std.ArrayList(*Environment) = null;
+pub var global_allocator: ?std.mem.Allocator = null;
+
+pub fn init_environment_tracking(allocator: std.mem.Allocator) void {
+    global_allocator = allocator;
+    global_environments = std.ArrayList(*Environment).init(allocator);
+}
+
+pub fn deinit_environment_tracking() void {
+    if (global_environments) |*envs| {
+        for (envs.items) |env| {
+            env.deinit_enclosed();
+        }
+        envs.deinit();
+        global_environments = null;
+        global_allocator = null;
+    }
+}
+
+fn track_environment(env: *Environment) void {
+    if (global_environments) |*envs| {
+        envs.append(env) catch return;
+    }
+}
+
 pub const ObjectType = enum {
     integer_obj,
     boolean_obj,
@@ -41,8 +66,8 @@ pub const Object = union(enum) {
         };
     }
 
-    pub fn new_error(allocator: std.mem.Allocator, comptime format: []const u8, args: anytype) Object {
-        const msg = std.fmt.allocPrint(allocator, format, args) catch return Object{ .null_obj = .{} };
+    pub fn new_error(comptime format: []const u8, args: anytype) Object {
+        const msg = std.fmt.allocPrint(global_allocator.?, format, args) catch return Object{ .null_obj = .{} };
         const err = Error{ .message = msg };
         return Object{ .error_obj = err };
     }
@@ -129,20 +154,28 @@ pub const Environment = struct {
     outer: ?*Environment,
     store: std.StringHashMap(Object),
     allocator: std.mem.Allocator,
+    is_tracked: bool,
 
     pub fn init_enclosed(allocator: std.mem.Allocator, outer: *Environment) !*Environment {
         const map = std.StringHashMap(Object).init(allocator);
         const env = try allocator.create(Environment);
 
-        env.* = .{ .store = map, .allocator = allocator, .outer = outer };
+        env.* = .{ .store = map, .allocator = allocator, .outer = outer, .is_tracked = false };
         return env;
     }
 
     pub fn init(allocator: std.mem.Allocator) !*Environment {
         const map = std.StringHashMap(Object).init(allocator);
         const env = try allocator.create(Environment);
-        env.* = .{ .store = map, .allocator = allocator, .outer = null };
+        env.* = .{ .store = map, .allocator = allocator, .outer = null, .is_tracked = false };
         return env;
+    }
+
+    pub fn mark_for_tracking(self: *Environment) void {
+        if (!self.is_tracked) {
+            self.is_tracked = true;
+            track_environment(self);
+        }
     }
 
     pub fn deinit(self: *Environment) void {

@@ -17,6 +17,9 @@ pub fn start(
 
     const allocator = std.heap.page_allocator;
 
+    object.init_environment_tracking(allocator);
+    defer object.deinit_environment_tracking();
+
     var env = try object.Environment.init(allocator);
     defer env.deinit();
 
@@ -64,7 +67,7 @@ pub fn start(
             continue;
         }
 
-        var evaluated = evaluator.eval_program(&program, allocator, env);
+        var evaluated = evaluator.eval_program(&program, env);
         var output: []const u8 = "ERROR Something in the input I cannot parse...\n";
         if (evaluated != null) {
             const evaluated_str = try evaluated.?.inspect(allocator);
