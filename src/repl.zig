@@ -20,11 +20,18 @@ pub fn start(
     var env = try object.Environment.init(allocator);
     defer env.deinit();
 
+    var input_lines = std.ArrayList([]u8).init(allocator);
+    defer {
+        for (input_lines.items) |line| {
+            allocator.free(line);
+        }
+        input_lines.deinit();
+    }
+
     while (true) {
         try writer.writeAll(PROMPT);
 
         var line_buf = std.ArrayList(u8).init(allocator);
-        defer line_buf.deinit();
 
         // Read line until newline or EOF
         while (true) {
@@ -39,8 +46,15 @@ pub fn start(
             }
         }
 
-        const line = line_buf.items;
-        if (line.len == 0) continue;
+        const line = try allocator.dupe(u8, line_buf.items);
+        line_buf.deinit(); // Free the temporary buffer
+
+        if (line.len == 0) {
+            allocator.free(line);
+            continue;
+        }
+
+        try input_lines.append(line);
 
         var lex = lexer.Lexer.init(line);
         var p = try parser.Parser.init(allocator, &lex);
