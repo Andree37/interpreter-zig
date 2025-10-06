@@ -1,11 +1,14 @@
 const std = @import("std");
 
+const ast = @import("ast.zig");
+
 pub const ObjectType = enum {
     integer_obj,
     boolean_obj,
     null_obj,
     return_obj,
     error_obj,
+    function_obj,
 };
 
 pub const Object = union(enum) {
@@ -14,6 +17,7 @@ pub const Object = union(enum) {
     null_obj: Null,
     return_obj: Return,
     error_obj: Error,
+    function_obj: Function,
 
     pub fn object_type(self: *const Object) ObjectType {
         return switch (self.*) {
@@ -22,6 +26,7 @@ pub const Object = union(enum) {
             .null_obj => ObjectType.null_obj,
             .return_obj => ObjectType.return_obj,
             .error_obj => ObjectType.error_obj,
+            .function_obj => ObjectType.function_obj,
         };
     }
 
@@ -32,6 +37,7 @@ pub const Object = union(enum) {
             .null_obj => |obj| try obj.inspect(),
             .return_obj => |obj| obj.inspect(allocator),
             .error_obj => |obj| try obj.inspect(allocator),
+            .function_obj => |obj| try obj.inspect(allocator),
         };
     }
 
@@ -88,22 +94,92 @@ pub const Error = struct {
     }
 };
 
+pub const Function = struct {
+    parameters: std.ArrayList(ast.Identifier),
+    body: *ast.BlockStatement,
+    env: *Environment,
+
+    pub fn inspect(self: *const Function, allocator: std.mem.Allocator) ![]const u8 {
+        var params = std.ArrayList(u8).init(allocator);
+        defer params.deinit();
+
+        var body = std.ArrayList(u8).init(allocator);
+        defer body.deinit();
+
+        const params_writer = params.writer();
+        for (self.parameters.items, 0..) |param, i| {
+            if (i > 0) params_writer.writeAll(", ") catch return "";
+            params_writer.writeAll(param.value) catch return "";
+        }
+
+        try self.body.string(body.writer());
+
+        var result = std.ArrayList(u8).init(allocator);
+        const writer = result.writer();
+
+        std.fmt.format(writer, "fn({s}) {{\n{s}\n}}", .{ params.items, body.items }) catch return "";
+
+        return result.toOwnedSlice() catch return "";
+    }
+};
+
 // NOT OBJECTS
 
 pub const Environment = struct {
+    outer: ?*Environment,
     store: std.StringHashMap(Object),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) Environment {
+    pub fn init_enclosed(allocator: std.mem.Allocator, outer: *Environment) !*Environment {
         const map = std.StringHashMap(Object).init(allocator);
-        return .{ .store = map, .allocator = allocator };
+        const env = try allocator.create(Environment);
+
+        env.* = .{ .store = map, .allocator = allocator, .outer = outer };
+        return env;
+    }
+
+    pub fn init(allocator: std.mem.Allocator) !*Environment {
+        const map = std.StringHashMap(Object).init(allocator);
+        const env = try allocator.create(Environment);
+        env.* = .{ .store = map, .allocator = allocator, .outer = null };
+        return env;
     }
 
     pub fn deinit(self: *Environment) void {
+        self.deinit_recursive();
+    }
+
+    fn deinit_recursive(self: *Environment) void {
+        var it = self.store.keyIterator();
+        while (it.next()) |key| {
+            self.allocator.free(key.*);
+        }
+        if (self.outer) |outer| {
+            outer.deinit_recursive();
+        }
+        self.store.deinit();
+        self.allocator.destroy(self);
+    }
+
+    pub fn deinit_enclosed(self: *Environment) void {
         var it = self.store.keyIterator();
         while (it.next()) |key| {
             self.allocator.free(key.*);
         }
         self.store.deinit();
+        self.allocator.destroy(self);
+    }
+
+    pub fn get(self: *Environment, key: []const u8) ?Object {
+        const obj = self.store.get(key);
+        if (obj == null and self.outer != null) {
+            return self.outer.?.get(key);
+        }
+
+        return obj;
+    }
+
+    pub fn set(self: *Environment, key: []const u8, val: Object) !void {
+        try self.store.put(key, val);
     }
 };

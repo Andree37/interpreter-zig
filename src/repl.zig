@@ -17,7 +17,7 @@ pub fn start(
 
     const allocator = std.heap.page_allocator;
 
-    var env = object.Environment.init(allocator);
+    var env = try object.Environment.init(allocator);
     defer env.deinit();
 
     while (true) {
@@ -50,7 +50,7 @@ pub fn start(
             continue;
         }
 
-        var evaluated = evaluator.eval_program(&program, allocator, &env);
+        var evaluated = evaluator.eval_program(&program, allocator, env);
         var output: []const u8 = "ERROR Something in the input I cannot parse...\n";
         if (evaluated != null) {
             const evaluated_str = try evaluated.?.inspect(allocator);

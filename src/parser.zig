@@ -178,7 +178,7 @@ pub const Parser = struct {
 
         const return_value = self.parse_expression(ExprOrder.lowest) orelse return null;
 
-        if (self.expect_peek(token.TokenType.semicolon)) {
+        if (self.peek_token.type == token.TokenType.semicolon) {
             self.next_token();
         }
 
@@ -547,7 +547,7 @@ pub const Parser = struct {
         switch (self.cur_token.type) {
             .let => {
                 const parsed = self.parse_let_statement();
-                std.debug.print("Parsed let statement: {any}\n", .{parsed});
+                // std.debug.print("Parsed let statement: {any}\n", .{parsed});
                 if (parsed != null) {
                     return .{ .let_stmt = parsed.? };
                 }
@@ -576,7 +576,7 @@ pub const Parser = struct {
 
         while (self.cur_token.type != token.TokenType.eof) {
             const stmt = self.parse_statement();
-            std.debug.print("Found stmt: {any}\n", .{stmt});
+            // std.debug.print("Found stmt: {any}\n", .{stmt});
             if (stmt != null) {
                 try program.statements.append(stmt.?);
             }
@@ -1031,7 +1031,7 @@ test "test function literal parsing" {
     }
     try std.testing.expect(p.errors.items.len == 0);
 
-    std.debug.print("{any}\n", .{program.statements.items});
+    // std.debug.print("{any}\n", .{program.statements.items});
     try std.testing.expect(program.statements.items.len == 1);
 
     const stmt: ast.Statement = program.statements.getLast();
