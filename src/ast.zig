@@ -40,6 +40,7 @@ pub const Statement = union(enum) {
 pub const Expression = union(enum) {
     identifier: Identifier,
     integer_literal: IntegerLiteral,
+    str_literal: StringLiteral,
     prefix_expr: PrefixExpression,
     infix_expr: InfixExpression,
     bool_expr: Boolean,
@@ -51,6 +52,7 @@ pub const Expression = union(enum) {
         return switch (self.*) {
             .identifier => |ident| ident.token_literal(),
             .integer_literal => |int_lit| int_lit.token_literal(),
+            .str_literal => |str_lit| str_lit.token_literal(),
             .prefix_expr => |expr| expr.token_literal(),
             .infix_expr => |expr| expr.token_literal(),
             .bool_expr => |expr| expr.token_literal(),
@@ -64,6 +66,7 @@ pub const Expression = union(enum) {
         switch (self.*) {
             .identifier => |ident| try ident.string(writer),
             .integer_literal => |int_lit| try int_lit.string(writer),
+            .str_literal => |str_lit| try str_lit.string(writer),
             .prefix_expr => |expr| try expr.string(writer),
             .infix_expr => |expr| try expr.string(writer),
             .bool_expr => |expr| try expr.string(writer),
@@ -77,6 +80,7 @@ pub const Expression = union(enum) {
         switch (self.*) {
             .identifier => {},
             .integer_literal => {},
+            .str_literal => {},
             .prefix_expr => |prefix| {
                 prefix.right.deinit(allocator);
                 allocator.destroy(prefix.right);
@@ -243,6 +247,23 @@ pub const IntegerLiteral = struct {
     }
 
     pub fn string(self: *const IntegerLiteral, writer: anytype) !void {
+        try writer.writeAll(self.token_literal());
+    }
+};
+
+pub const StringLiteral = struct {
+    token: token.Token,
+    value: []const u8,
+
+    pub fn init(expr: *const Expression) StringLiteral {
+        return expr.str_literal;
+    }
+
+    pub fn token_literal(self: *const StringLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn string(self: *const StringLiteral, writer: anytype) !void {
         try writer.writeAll(self.token_literal());
     }
 };

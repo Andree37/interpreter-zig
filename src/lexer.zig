@@ -29,6 +29,15 @@ pub const Lexer = struct {
         self.read_position += 1;
     }
 
+    fn read_string(self: *Lexer) []const u8 {
+        const pos = self.position + 1;
+        self.read_char();
+        while (self.ch != '"' and self.ch != 0) {
+            self.read_char();
+        }
+        return self.input[pos..self.position];
+    }
+
     fn read_number(self: *Lexer) []const u8 {
         const position = self.position;
         while (is_number(self.ch)) {
@@ -92,6 +101,7 @@ pub const Lexer = struct {
             '*' => tok = .{ .type = token.TokenType.asterisk, .literal = lit },
             '<' => tok = .{ .type = token.TokenType.lt, .literal = lit },
             '>' => tok = .{ .type = token.TokenType.gt, .literal = lit },
+            '"' => tok = .{ .type = token.TokenType.str, .literal = self.read_string() },
             0 => tok = .{ .type = token.TokenType.eof, .literal = "" },
             'a'...'z', 'A'...'Z', '_' => {
                 tok.literal = self.read_identifier();
@@ -126,7 +136,7 @@ fn is_number(ch: u8) bool {
 }
 
 test "test next token" {
-    const input = "=+(){},;";
+    const input = "=+(){},;\"foobar\"";
 
     var tests = std.ArrayList(token.Token).init(std.testing.allocator);
     defer tests.deinit();
@@ -139,6 +149,7 @@ test "test next token" {
     try tests.append(.{ .type = token.TokenType.r_brace, .literal = "}" });
     try tests.append(.{ .type = token.TokenType.comma, .literal = "," });
     try tests.append(.{ .type = token.TokenType.semicolon, .literal = ";" });
+    try tests.append(.{ .type = token.TokenType.str, .literal = "foobar" });
     try tests.append(.{ .type = token.TokenType.eof, .literal = "" });
 
     var l = Lexer.init(input);

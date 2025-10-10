@@ -92,7 +92,7 @@ fn native_bool_to_boolean_object(input: bool) object.Object {
 fn eval_bang_operator_expression(right: object.Object) object.Object {
     switch (right) {
         .boolean_obj => |bool_obj| return native_bool_to_boolean_object(!bool_obj.value),
-        .integer_obj, .error_obj, .null_obj, .return_obj, .function_obj => return FALSE,
+        .integer_obj, .error_obj, .null_obj, .return_obj, .function_obj, .str_obj => return FALSE,
     }
 }
 
@@ -103,7 +103,7 @@ fn eval_minus_operator_expression(right: object.Object) object.Object {
                 .value = -int_obj.value,
             },
         },
-        .boolean_obj, .error_obj, .null_obj, .return_obj, .function_obj => return object.Object.new_error("unknown operator: -{s}", .{@tagName(right.object_type())}),
+        .boolean_obj, .error_obj, .null_obj, .return_obj, .function_obj, .str_obj => return object.Object.new_error("unknown operator: -{s}", .{@tagName(right.object_type())}),
     }
 }
 
@@ -151,7 +151,7 @@ fn is_truthy(obj: object.Object) bool {
     return switch (obj) {
         .boolean_obj => |boolean| return boolean.value,
         .integer_obj => return true,
-        .null_obj, .error_obj, .return_obj, .function_obj => return false,
+        .null_obj, .error_obj, .return_obj, .function_obj, .str_obj => return false,
     };
 }
 
@@ -282,6 +282,11 @@ fn eval_expr(env: *object.Environment, expr: ast.Expression) ?object.Object {
                 .value = int.value,
             },
         },
+        .str_literal => |str| return object.Object{
+            .str_obj = object.String{
+                .value = str.value,
+            },
+        },
         .bool_expr => |boolean| return if (boolean.value) TRUE else FALSE,
         .call_expr => |call_expr| {
             const fun = eval_expr(env, call_expr.function.*);
@@ -344,6 +349,10 @@ fn test_eval(input: []const u8) !?object.Object {
 
 fn test_integer_object(obj: object.Object, expected: i64) bool {
     return obj.integer_obj.value == expected;
+}
+
+fn test_str_object(obj: object.Object, expected: []const u8) bool {
+    return std.mem.eql(u8, obj.str_obj.value, expected);
 }
 
 fn test_bool_object(obj: object.Object, expected: bool) bool {
@@ -456,6 +465,7 @@ test "test if else expressions" {
                 .return_obj => unreachable,
                 .error_obj => unreachable,
                 .function_obj => unreachable,
+                .str_obj => unreachable,
                 .null_obj => try std.testing.expect(test_null_object(evaluated.?)),
             }
         } else {
@@ -573,5 +583,19 @@ test "test function application" {
     for (tests) |t| {
         const evaluated = try test_eval(t.input);
         try std.testing.expect(test_integer_object(evaluated.?, t.expected));
+    }
+}
+
+test "test string literal" {
+    const tests = [_]struct {
+        input: []const u8,
+        expected: []const u8,
+    }{
+        .{ .input = "\"Hello World!\"", .expected = "Hello World!" },
+    };
+
+    for (tests) |t| {
+        const evaluated = try test_eval(t.input);
+        try std.testing.expect(test_str_object(evaluated.?, t.expected));
     }
 }

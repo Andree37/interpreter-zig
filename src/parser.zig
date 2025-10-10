@@ -73,6 +73,7 @@ pub const Parser = struct {
         try p.register_prefix(token.TokenType.l_paren, parse_grouped_expression);
         try p.register_prefix(token.TokenType.kif, parse_if_expression);
         try p.register_prefix(token.TokenType.function, parse_function_literal);
+        try p.register_prefix(token.TokenType.str, parse_string_literal);
 
         // infix
         try p.register_infix(token.TokenType.plus, parse_infix_expression);
@@ -442,6 +443,17 @@ pub const Parser = struct {
         };
 
         return ast.Expression{ .func_literal = fun_lit };
+    }
+
+    fn parse_string_literal(self: *Parser) ?ast.Expression {
+        const cur_token = self.cur_token;
+
+        return ast.Expression{
+            .str_literal = ast.StringLiteral{
+                .token = cur_token,
+                .value = cur_token.literal,
+            },
+        };
     }
 
     fn parse_function_params(self: *Parser) !?std.ArrayList(ast.Identifier) {
@@ -1120,4 +1132,29 @@ test "test call expression parsing" {
     try std.testing.expectEqual(4, infix_expr_2.left.integer_literal.value);
     try std.testing.expectEqualStrings("+", infix_expr_2.operator);
     try std.testing.expectEqual(5, infix_expr_2.right.integer_literal.value);
+}
+
+test "test string literal expression" {
+    const input = "\"hello world\"";
+
+    var lex = lexer.Lexer.init(input);
+    var p = try Parser.init(std.testing.allocator, &lex);
+    defer p.deinit();
+    var program = try p.parse_program();
+    defer program.deinit();
+
+    for (p.errors.items) |err| {
+        std.debug.print("Found error: {s}\n", .{err});
+    }
+    try std.testing.expect(p.errors.items.len == 0);
+
+    // std.debug.print("{any}\n", .{program.statements.items});
+    try std.testing.expect(program.statements.items.len == 1);
+
+    const stmt: ast.Statement = program.statements.getLast();
+    const expr = stmt.expr_stmt;
+    const str_literal = ast.StringLiteral.init(&expr.expression);
+
+    try std.testing.expectEqualStrings("hello world", str_literal.value);
+    try std.testing.expectEqual(token.TokenType.str, str_literal.token.type);
 }

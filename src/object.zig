@@ -29,6 +29,7 @@ fn track_environment(env: *Environment) void {
 
 pub const ObjectType = enum {
     integer_obj,
+    str_obj,
     boolean_obj,
     null_obj,
     return_obj,
@@ -38,6 +39,7 @@ pub const ObjectType = enum {
 
 pub const Object = union(enum) {
     integer_obj: Integer,
+    str_obj: String,
     boolean_obj: Boolean,
     null_obj: Null,
     return_obj: Return,
@@ -47,6 +49,7 @@ pub const Object = union(enum) {
     pub fn object_type(self: *const Object) ObjectType {
         return switch (self.*) {
             .integer_obj => ObjectType.integer_obj,
+            .str_obj => ObjectType.str_obj,
             .boolean_obj => ObjectType.boolean_obj,
             .null_obj => ObjectType.null_obj,
             .return_obj => ObjectType.return_obj,
@@ -58,6 +61,7 @@ pub const Object = union(enum) {
     pub fn inspect(self: *const Object, allocator: std.mem.Allocator) ![]const u8 {
         return switch (self.*) {
             .integer_obj => |obj| try obj.inspect(allocator),
+            .str_obj => |obj| try obj.inspect(allocator),
             .boolean_obj => |obj| try obj.inspect(allocator),
             .null_obj => |obj| try obj.inspect(),
             .return_obj => |obj| obj.inspect(allocator),
@@ -78,6 +82,14 @@ pub const Integer = struct {
 
     pub fn inspect(self: *const Integer, allocator: std.mem.Allocator) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{d}", .{self.value}) catch return "";
+    }
+};
+
+pub const String = struct {
+    value: []const u8,
+
+    pub fn inspect(self: *const String, allocator: std.mem.Allocator) ![]const u8 {
+        return std.fmt.allocPrint(allocator, "{s}", .{self.value}) catch return "";
     }
 };
 
