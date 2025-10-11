@@ -87,9 +87,16 @@ pub const Integer = struct {
 
 pub const String = struct {
     value: []const u8,
+    owned: bool = false,
 
     pub fn inspect(self: *const String, allocator: std.mem.Allocator) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{s}", .{self.value}) catch return "";
+    }
+
+    pub fn deinit(self: *const String, allocator: std.mem.Allocator) void {
+        if (self.owned) {
+            allocator.free(self.value);
+        }
     }
 };
 

@@ -166,11 +166,37 @@ fn eval_infix_expression(operator: []const u8, left: object.Object, right: objec
         return eval_boolean_infix_expression(operator, left, right);
     }
 
+    // left str, right str
+    if (left.object_type() == object.ObjectType.str_obj and right.object_type() == object.ObjectType.str_obj) {
+        return eval_string_infix_expression(operator, left, right);
+    }
+
     if (left.object_type() != right.object_type()) {
         return object.Object.new_error("type mismatch: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
     }
 
     return object.Object.new_error("unknown operator: {s}{s}", .{ operator, @tagName(right.object_type()) });
+}
+
+fn eval_string_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
+    const left_str = left.str_obj;
+    const right_str = right.str_obj;
+
+    if (std.mem.eql(u8, operator, "+")) {
+        const result = std.fmt.allocPrint(object.global_allocator.?, "{s}{s}", .{ left_str.value, right_str.value }) catch "";
+
+        if (left_str.owned) {
+            object.global_allocator.?.free(left_str.value);
+        }
+
+        if (right_str.owned) {
+            object.global_allocator.?.free(right_str.value);
+        }
+
+        return object.Object{ .str_obj = .{ .value = result, .owned = true } };
+    }
+
+    return object.Object.new_error("unknown operator: {s} {s} {s}", .{ @tagName(left.object_type()), operator, @tagName(right.object_type()) });
 }
 
 fn eval_boolean_infix_expression(operator: []const u8, left: object.Object, right: object.Object) object.Object {
@@ -506,6 +532,7 @@ test "test error handling" {
         .{ .input = "if (10 > 1) { true + false; }", .expected = "unknown operator: boolean_obj + boolean_obj" },
         .{ .input = "if (10 > 1) { if (10 > 1) { return true + false; } return 1; }", .expected = "unknown operator: boolean_obj + boolean_obj" },
         .{ .input = "foobar", .expected = "identifier not found: foobar" },
+        .{ .input = "\"Hello\" - \"World\"", .expected = "unknown operator: str_obj - str_obj" },
     };
 
     for (tests) |t| {
@@ -598,4 +625,13 @@ test "test string literal" {
         const evaluated = try test_eval(t.input);
         try std.testing.expect(test_str_object(evaluated.?, t.expected));
     }
+}
+
+test "test string concatenation" {
+    const input = "\"Hello\" + \" \" + \"World\"";
+
+    const evaluated = try test_eval(input);
+    defer std.testing.allocator.free(evaluated.?.str_obj.value);
+
+    try std.testing.expect(test_str_object(evaluated.?, "Hello World"));
 }
